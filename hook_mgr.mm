@@ -245,7 +245,7 @@ static void *alloc_trampoline_page(uintptr_t near_pc) {
         int64_t off = ((i & 1) ? 1 : -1) * (int64_t)(i / 2 + 1) * (int64_t)ps * 64;
         void *hint = (void *)(near_pc + off);
         void *p = mmap(hint, ps, PROT_READ | PROT_WRITE,
-                       MAP_PRIVATE | MAP_ANON | MAP_FIXED_NOREPLACE, -1, 0);
+                       MAP_PRIVATE | MAP_ANON | MAP_FIXED, -1, 0);
         if (p != MAP_FAILED && p != nullptr) return p;
         if (p == MAP_FAILED && errno != EEXIST) break;
     }
@@ -257,6 +257,12 @@ static void *alloc_trampoline_page(uintptr_t near_pc) {
 } // namespace
 
 namespace managers {
+
+hook_mgr_type hook_mgr;
+
+void hook_mgr_type::start() {
+    NSLog(@"[Aurora] hook_mgr::start");
+}
 
 void hook_mgr_type::hook(uintptr_t absolute_address, void *replacement, void **backup) {
     if (backup) *backup = nullptr;
