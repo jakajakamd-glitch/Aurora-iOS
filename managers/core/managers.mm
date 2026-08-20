@@ -1,6 +1,6 @@
-#import "function_mgr.hpp"
-#import "hook_mgr.hpp"
-#import "Roblox.hpp"
+#import "../functions/function_mgr.hpp"
+#import "../hooks/hook_mgr.hpp"
+#import "../roblox/Roblox.hpp"
 #import "managers.hpp"
 #import <Foundation/Foundation.h>
 
