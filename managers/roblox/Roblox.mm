@@ -16,6 +16,15 @@ roblox_manager_t roblox_manager;
 namespace {
 void (*orig_jobStart)(Job*) = nullptr;
 void (*orig_startScript)(script_context*, ScriptStart*) = nullptr;
+void (*orig_onServiceProvider)(script_context*, void*, void*) = nullptr;
+
+void on_service_provider_hook(script_context* ctx, void* oldprovider, void* newprovider) {
+    utility::utility_mgr.log([[NSString stringWithFormat:@"onServiceProvider ctx=%p old=%p new=%p", ctx, oldprovider, newprovider] UTF8String]);
+    if (newprovider) {
+        roblox_manager.teleport_handle(ctx, oldprovider, newprovider);
+    }
+    orig_onServiceProvider(ctx, oldprovider, newprovider);
+}
 
 void job_start_hook(Job *job) {
     const char *name = roblox_manager_t::get_job_name(job);
@@ -48,6 +57,7 @@ void roblox_manager_t::start() {
 void roblox_manager_t::install_hooks() {
     void *jobstart    = function_mgr.resolve(function_mgr_type::jobstart_offset);
     void *startscript = function_mgr.resolve(function_mgr_type::startScript_offset);
+    void *onsp        = function_mgr.resolve(function_mgr_type::onServiceProvider_offset);
 
     if (jobstart) {
         hook_mgr.hook(reinterpret_cast<uintptr_t>(jobstart),
@@ -59,7 +69,12 @@ void roblox_manager_t::install_hooks() {
                       (void*)start_script_hook,
                       (void**)&orig_startScript);
     }
-    utility::utility_mgr.log([[NSString stringWithFormat:@"hooks installed jobStart=%p startScript=%p", jobstart, startscript] UTF8String]);
+    if (onsp) {
+        hook_mgr.hook(reinterpret_cast<uintptr_t>(onsp),
+                      (void*)on_service_provider_hook,
+                      (void**)&orig_onServiceProvider);
+    }
+    utility::utility_mgr.log([[NSString stringWithFormat:@"hooks installed jobStart=%p startScript=%p onSP=%p", jobstart, startscript, onsp] UTF8String]);
 }
 
 const char* roblox_manager_t::get_job_name(Job* job) {
@@ -149,6 +164,36 @@ void roblox_manager_t::set_identity(lua_State* thread, uint32_t identity) {
         *caps = capabilities::roblox_script;
         utility::utility_mgr.log([[NSString stringWithFormat:@"set_identity caps=0x%llx es=%p", (unsigned long long)*caps, *extraspace_ptr] UTF8String]);
     }
+}
+
+void roblox_manager_t::teleport_handle(script_context* ctx, void* oldprovider, void* newprovider) {
+    utility::utility_mgr.log("teleport_handle: resetting env");
+
+    scriptctx   = nullptr;
+    globalstate = nullptr;
+    thread      = nullptr;
+
+    scriptctx = ctx;
+    if (!scriptctx) {
+        utility::utility_mgr.log("teleport_handle: null scriptctx");
+        return;
+    }
+
+    globalstate = get_global_state(scriptctx, capabilities::roblox_script);
+    if (!globalstate) {
+        utility::utility_mgr.log("teleport_handle: null globalstate");
+        return;
+    }
+
+    thread = lua_newthread((lua_State*)globalstate);
+    if (!thread) {
+        utility::utility_mgr.log("teleport_handle: lua_newthread failed");
+        return;
+    }
+
+    sandbox_thread(thread);
+
+    utility::utility_mgr.log([[NSString stringWithFormat:@"teleport_handle: done sc=%p gs=%p thread=%p", scriptctx, globalstate, thread] UTF8String]);
 }
 
 lua_State* roblox_manager_t::lua_newthread(lua_State* L) {
