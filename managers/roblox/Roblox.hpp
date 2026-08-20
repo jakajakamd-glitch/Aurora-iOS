@@ -35,7 +35,6 @@ public:
     void setup_environment(Job* whsj);
     void sandbox_thread(lua_State* thread);
     void set_identity(lua_State* thread, uint32_t identity);
-    void teleport_handle(struct script_context* ctx, void* oldprovider, void* newprovider);
 
     int execute_script(const char* source, size_t size, const char* chunkname);
 

@@ -21,7 +21,7 @@ void (*orig_onServiceProvider)(script_context*, void*, void*) = nullptr;
 void on_service_provider_hook(script_context* ctx, void* oldprovider, void* newprovider) {
     utility::utility_mgr.log([[NSString stringWithFormat:@"onServiceProvider ctx=%p old=%p new=%p", ctx, oldprovider, newprovider] UTF8String]);
     if (newprovider) {
-        roblox_manager.teleport_handle(ctx, oldprovider, newprovider);
+        roblox_manager.setup_environment(nullptr);
     }
     orig_onServiceProvider(ctx, oldprovider, newprovider);
 }
@@ -166,36 +166,6 @@ void roblox_manager_t::set_identity(lua_State* thread, uint32_t identity) {
     }
 }
 
-void roblox_manager_t::teleport_handle(script_context* ctx, void* oldprovider, void* newprovider) {
-    utility::utility_mgr.log("teleport_handle: resetting env");
-
-    scriptctx   = nullptr;
-    globalstate = nullptr;
-    thread      = nullptr;
-
-    scriptctx = ctx;
-    if (!scriptctx) {
-        utility::utility_mgr.log("teleport_handle: null scriptctx");
-        return;
-    }
-
-    globalstate = get_global_state(scriptctx, capabilities::roblox_script);
-    if (!globalstate) {
-        utility::utility_mgr.log("teleport_handle: null globalstate");
-        return;
-    }
-
-    thread = lua_newthread((lua_State*)globalstate);
-    if (!thread) {
-        utility::utility_mgr.log("teleport_handle: lua_newthread failed");
-        return;
-    }
-
-    sandbox_thread(thread);
-
-    utility::utility_mgr.log([[NSString stringWithFormat:@"teleport_handle: done sc=%p gs=%p thread=%p", scriptctx, globalstate, thread] UTF8String]);
-}
-
 lua_State* roblox_manager_t::lua_newthread(lua_State* L) {
     if (!L) return nullptr;
     return ::lua_newthread(L);
@@ -217,8 +187,9 @@ int roblox_manager_t::execute_script(const char* source, size_t size, const char
         return -1;
     }
 
-    sandbox_thread(exec_thread);
-    set_identity(exec_thread, 2);
+    function_mgr.child_sandbox((void*)exec_thread, (void*)globalstate, nullptr, nullptr);
+
+    function_mgr.load_cap_forward((void*)exec_thread, (void*)globalstate);
 
     std::string bytecode = Luau::compile(std::string(source, size));
     if (bytecode.empty()) {
@@ -235,9 +206,11 @@ int roblox_manager_t::execute_script(const char* source, size_t size, const char
         return status;
     }
 
-    status = function_mgr.lua_resume((void*)exec_thread, nullptr, 0);
+    function_mgr.proto_cap_assign((void*)exec_thread, nullptr);
+
+    status = function_mgr.direct_resume((void*)exec_thread, 0);
     if (status != 0 && status != LUA_YIELD) {
-        utility::utility_mgr.log([[NSString stringWithFormat:@"execute_script: resume failed status=%d", status] UTF8String]);
+        utility::utility_mgr.log([[NSString stringWithFormat:@"execute_script: direct_resume failed status=%d", status] UTF8String]);
         return status;
     }
 
