@@ -94,9 +94,9 @@ script_context* roblox_manager_t::get_global_state(script_context* ctx, uint64_t
 }
 
 void roblox_manager_t::setup_environment(Job* whsj) {
-    scriptctx    = nullptr;
-    globalstate  = nullptr;
-    luathread    = nullptr;
+    scriptctx   = nullptr;
+    globalstate = nullptr;
+    threadptr   = nullptr;
 
     if (!whsj) return;
 
@@ -112,10 +112,34 @@ void roblox_manager_t::setup_environment(Job* whsj) {
         return;
     }
 
-    luathread = lua_newthread((lua_State*)globalstate);
+    threadptr = lua_newthread((lua_State*)globalstate);
+    if (!threadptr) {
+        NSLog(@"[Aurora] setup_environment: lua_newthread failed");
+        return;
+    }
+
+    sandbox_thread(threadptr);
 
     NSLog(@"[Aurora] setup_environment: WHSJ=%p sc=%p gs=%p thread=%p",
-          whsj, scriptctx, globalstate, luathread);
+          whsj, scriptctx, globalstate, threadptr);
+}
+
+void roblox_manager_t::sandbox_thread(lua_State* thread) {
+    if (!thread || !globalstate) return;
+
+    lua_State* gs = (lua_State*)globalstate;
+
+    lua_pushvalue(gs, LUA_GLOBALSINDEX);
+    lua_pushvalue(gs, -1);
+    lua_xmove(gs, thread, 1);
+
+    lua_newtable(thread);
+    lua_pushstring(thread, "_G");
+    lua_pushvalue(thread, -3);
+    lua_settable(thread, -3);
+    lua_setglobal(thread, "_G");
+
+    NSLog(@"[Aurora] sandbox_thread: cloned GT from gs=%p into thread=%p", gs, thread);
 }
 
 lua_State* roblox_manager_t::lua_newthread(lua_State* L) {
@@ -128,12 +152,12 @@ void roblox_manager_t::start_script(script_context* ctx, ScriptStart* script_sta
 }
 
 int roblox_manager_t::execute_script(const char* source, size_t size, const char* chunkname) {
-    if (!luathread || !source || size == 0) {
+    if (!threadptr || !source || size == 0) {
         NSLog(@"[Aurora] execute_script: no thread or source");
         return -1;
     }
 
-    void** extraspace_ptr = (void**)((char*)luathread + roblox_offsets::extraspace_ptr_l);
+    void** extraspace_ptr = (void**)((char*)threadptr + roblox_offsets::extraspace_ptr_l);
     if (*extraspace_ptr) {
         uint64_t* caps = (uint64_t*)((char*)(*extraspace_ptr) + roblox_offsets::extraspace_caps);
         *caps = capabilities::roblox_script;
@@ -147,7 +171,7 @@ int roblox_manager_t::execute_script(const char* source, size_t size, const char
         return -1;
     }
 
-    int status = function_mgr.vm_load((void*)luathread,
+    int status = function_mgr.vm_load((void*)threadptr,
                                        chunkname ? chunkname : "aurora",
                                        bytecode.data(),
                                        0, 0);
@@ -156,7 +180,7 @@ int roblox_manager_t::execute_script(const char* source, size_t size, const char
         return status;
     }
 
-    status = function_mgr.lua_resume((void*)luathread, nullptr, 0);
+    status = function_mgr.lua_resume((void*)threadptr, nullptr, 0);
     if (status != 0 && status != LUA_YIELD) {
         NSLog(@"[Aurora] execute_script: resume failed status=%d", status);
         return status;
