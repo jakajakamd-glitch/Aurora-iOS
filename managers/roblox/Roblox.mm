@@ -1,7 +1,7 @@
 #import "Roblox.hpp"
-#import "function_mgr.hpp"
-#import "hook_mgr.hpp"
-#import "offsets.hpp"
+#import "../functions/function_mgr.hpp"
+#import "../hooks/hook_mgr.hpp"
+#import "../../offsets/offsets.hpp"
 #import <Foundation/Foundation.h>
 #import <string.h>
 #include "lua.h"
