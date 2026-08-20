@@ -16,6 +16,7 @@ struct Job;
 namespace capabilities {
     enum : uint64_t {
         roblox_script = 0x2000000000000003ULL,
+        fallback      = 0x003fffffffffff00ULL,
     };
 }
 
@@ -28,18 +29,17 @@ public:
     static struct script_context* get_script_context_from_whsj(Job* whsj);
     static bool is_whsj(Job* job);
 
-    struct script_context* get_global_state(struct script_context* ctx, uint64_t capabilities);
+    void* get_global_state(struct script_context* ctx, uint64_t caps);
     lua_State* lua_newthread(lua_State* L);
     void start_script(struct script_context* ctx, ScriptStart* script_start);
 
     void setup_environment(Job* whsj);
-    void sandbox_thread(lua_State* thread);
     void set_identity(lua_State* thread, uint32_t identity);
 
     int execute_script(const char* source, size_t size, const char* chunkname);
 
     struct script_context* scriptctx   = nullptr;
-    struct script_context* globalstate = nullptr;
+    void*                  selected_state = nullptr;
     lua_State*             thread      = nullptr;
 };
 
