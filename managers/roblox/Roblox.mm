@@ -170,7 +170,21 @@ void roblox_manager_t::setup_environment(Job* whsj) {
         return;
     }
 
+    sandbox_thread(thread);
+
     utility::utility_mgr.log([[NSString stringWithFormat:@"setup_environment sc=%p state=%p thread=%p", scriptctx, selected_state, thread] UTF8String]);
+}
+
+void roblox_manager_t::sandbox_thread(lua_State* new_thread) {
+    lua_createtable(new_thread, 0, 0);
+    lua_createtable(new_thread, 0, 0);
+    lua_pushliteral(new_thread, "the metatable is locked");
+    lua_setfield(new_thread, -2, "__metatable");
+    lua_pushliteral(new_thread, "__index");
+    lua_pushvalue(new_thread, LUA_GLOBALSINDEX);
+    lua_settable(new_thread, -3);
+    lua_setmetatable(new_thread, -2);
+    lua_replace(new_thread, LUA_GLOBALSINDEX);
 }
 
 lua_State* roblox_manager_t::lua_newthread(lua_State* L) {
@@ -188,23 +202,15 @@ int roblox_manager_t::execute_script(const char* source, size_t size, const char
         return -1;
     }
 
-    lua_State* l = lua_newthread(thread);
-    if (!l) {
+    lua_State* new_thread = lua_newthread(thread);
+    if (!new_thread) {
         utility::utility_mgr.log("execute_script: lua_newthread failed");
         return -1;
     }
 
-    lua_createtable(l, 0, 0);
-    lua_createtable(l, 0, 0);
-    lua_pushliteral(l, "the metatable is locked");
-    lua_setfield(l, -2, "__metatable");
-    lua_pushliteral(l, "__index");
-    lua_pushvalue(l, LUA_GLOBALSINDEX);
-    lua_settable(l, -3);
-    lua_setmetatable(l, -2);
-    lua_replace(l, LUA_GLOBALSINDEX);
+    sandbox_thread(new_thread);
 
-    void** exec_ptr = (void**)((char*)l + roblox_offsets::extraspace_ptr_l);
+    void** exec_ptr = (void**)((char*)new_thread + roblox_offsets::extraspace_ptr_l);
     if (!*exec_ptr) {
         utility::utility_mgr.log("execute_script: no execution context");
         return -1;
@@ -218,7 +224,7 @@ int roblox_manager_t::execute_script(const char* source, size_t size, const char
         return -1;
     }
 
-    int status = function_mgr.vm_load((void*)l,
+    int status = function_mgr.vm_load((void*)new_thread,
                                        chunkname ? chunkname : "aurora",
                                        bytecode.data(),
                                        0, 0);
@@ -233,10 +239,10 @@ int roblox_manager_t::execute_script(const char* source, size_t size, const char
         return -1;
     }
 
-    set_proto_caps(l, -1, capability_record);
+    set_proto_caps(new_thread, -1, capability_record);
     utility::utility_mgr.log([[NSString stringWithFormat:@"execute_script: proto caps set record=%p", capability_record] UTF8String]);
 
-    status = function_mgr.lua_resume((void*)l, nullptr, 0);
+    status = function_mgr.lua_resume((void*)new_thread, nullptr, 0);
     if (status != 0 && status != LUA_YIELD) {
         utility::utility_mgr.log([[NSString stringWithFormat:@"execute_script: resume failed status=%d", status] UTF8String]);
         return status;

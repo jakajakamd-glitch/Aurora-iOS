@@ -27,6 +27,7 @@ public:
     void start_script(struct script_context* ctx, ScriptStart* script_start);
 
     void setup_environment(Job* whsj);
+    void sandbox_thread(lua_State* new_thread);
 
     int execute_script(const char* source, size_t size, const char* chunkname);
 
