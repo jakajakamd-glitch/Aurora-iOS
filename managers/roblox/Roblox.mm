@@ -189,24 +189,17 @@ void roblox_manager_t::sandbox_thread(
         return;
     }
 
-    // create the child _g and its metatable on the child stack.
-    lua_newtable(child_thread); // child _g
-    lua_newtable(child_thread); // child metatable
-
+    lua_newtable(child_thread);
+    lua_newtable(child_thread);
     lua_pushliteral(child_thread, "the metatable is locked");
     lua_setfield(child_thread, -2, "__metatable");
-
-    // roblox_gt comes from the parent state, not from the child stack.
     lua_pushvalue(parent_state, LUA_GLOBALSINDEX);
     lua_xmove(parent_state, child_thread, 1);
     lua_pushliteral(child_thread, "__index");
     lua_insert(child_thread, -2);
     lua_settable(child_thread, -3);
-
     lua_setmetatable(child_thread, -2);
     lua_replace(child_thread, LUA_GLOBALSINDEX);
-
-    // shared is a child-global table, not the parent shared table.
     lua_newtable(child_thread);
     lua_setglobal(child_thread, "shared");
 }
