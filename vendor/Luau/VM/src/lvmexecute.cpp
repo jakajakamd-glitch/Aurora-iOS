@@ -15,6 +15,7 @@
 #include "lbuiltins.h"
 #include "lnumutils.h"
 #include "lbytecode.h"
+#include "../../../../managers/functions/function_mgr.hpp"
 
 #include <string.h>
 
@@ -3717,33 +3718,14 @@ reentry:
     }
 }
 
-// roblox's luau_execute function pointer — resolved at runtime
-typedef void ( *rbx_luau_execute_fn )( lua_State* );
-static rbx_luau_execute_fn s_rbx_luau_execute = nullptr;
-
-// resolved from libroblox.so base + 0x5b57464 ( lua_resume )
-typedef int ( *rbx_lua_resume_fn )( lua_State*, int );
-static rbx_lua_resume_fn s_rbx_lua_resume = nullptr;
-
-// call this before using luau_execute to set the roblox function pointer
-extern "C" void serpent_set_rbx_execute( void* fn, void* resume_fn )
-{
-    s_rbx_luau_execute = (rbx_luau_execute_fn)fn;
-    s_rbx_lua_resume   = (rbx_lua_resume_fn)resume_fn;
-}
-
 void luau_execute(lua_State* L)
 {
-    // delegate to roblox's luau_execute — it reads Closure/Proto using
-    // roblox's struct layout and supports all roblox opcodes/features.
-    // our Proto struct is fixed to match roblox's layout so luau_precall
-    // sets ci->savedpc = p->code correctly (code at +0x30 in roblox's Proto).
-    if ( s_rbx_luau_execute )
+    if (managers::function_mgr.resolve(managers::function_mgr_type::luauExecute_offset))
     {
-        s_rbx_luau_execute( L );
+        managers::function_mgr.luau_execute(L);
         return;
     }
-    // fallback: our own dispatch ( only used if rbx fn not resolved )
+
     if (L->singlestep)
         luau_execute<true>(L);
     else

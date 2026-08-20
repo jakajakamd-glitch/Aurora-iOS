@@ -11,6 +11,7 @@ typedef void* (*getGlobalState_t)(void*, void*, void*);
 typedef void  (*startScript_t)(void*, void*);
 typedef int   (*vmLoad_t)(void*, const char*, const char*, int, int);
 typedef int   (*luaResume_t)(void*, void*, int);
+typedef void  (*luauExecute_t)(void*);
 typedef void* (*getCapabilityRecord_t)(void*, uint64_t);
 }
 
@@ -47,6 +48,12 @@ int function_mgr_type::lua_resume(void* L, void* from, int nargs) {
     if (base_ == 0 || !L) return -1;
     auto fn = (luaResume_t)(base_ + luaResume_offset);
     return fn(L, from, nargs);
+}
+
+void function_mgr_type::luau_execute(void* L) {
+    if (base_ == 0 || !L) return;
+    auto fn = (luauExecute_t)(base_ + luauExecute_offset);
+    fn(L);
 }
 
 void* function_mgr_type::get_capability_record(void* scriptctx, uint64_t caps) {

@@ -17,12 +17,14 @@ public:
     static constexpr uintptr_t getGlobalState_offset = 0x1767794;
     static constexpr uintptr_t vmLoad_offset       = 0x0438dc50;
     static constexpr uintptr_t luaResume_offset    = 0x04370cf0;
+    static constexpr uintptr_t luauExecute_offset  = 0x04389148;
     static constexpr uintptr_t getCapabilityRecord_offset = 0x01766d5c;
 
     void* get_global_state(void* scriptctx);
     void  start_script(void* ctx, void* script_start);
     int   vm_load(void* L, const char* name, const char* data, int mode, int flags);
     int   lua_resume(void* L, void* from, int nargs);
+    void  luau_execute(void* L);
     void* get_capability_record(void* scriptctx, uint64_t caps);
 
 private:
