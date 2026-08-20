@@ -33,6 +33,7 @@ public:
     void start_script(struct script_context* ctx, ScriptStart* script_start);
 
     void setup_environment(Job* whsj);
+    void sandbox_thread(lua_State* new_thread);
 
     int execute_script(const char* source, size_t size, const char* chunkname);
 
@@ -43,6 +44,7 @@ public:
 private:
     struct script_context* scriptctx    = nullptr;
     struct script_context* globalstate  = nullptr;
+    lua_State*             aurora_thread = nullptr;
     lua_State*             luathread    = nullptr;
 };
 
