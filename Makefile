@@ -7,6 +7,7 @@ Aurora_FILES = Aurora.mm \
         managers/hooks/hook_mgr.mm \
         managers/functions/function_mgr.mm \
         managers/roblox/Roblox.mm \
+        managers/utility/utility_mgr.mm \
         vendor/Dobby/source/core/assembler/assembler-arm.cc \
         vendor/Dobby/source/core/assembler/assembler-ia32.cc \
         vendor/Dobby/source/core/assembler/assembler-x64.cc \
@@ -105,6 +106,7 @@ Aurora_CFLAGS = -fobjc-arc -fvisibility=hidden -DDOBBY_LOGGING_DISABLE -DBUILD_W
         -I$(THEOS_PROJECT_DIR)/managers/hooks \
         -I$(THEOS_PROJECT_DIR)/managers/functions \
         -I$(THEOS_PROJECT_DIR)/managers/roblox \
+        -I$(THEOS_PROJECT_DIR)/managers/utility \
         -I$(THEOS_PROJECT_DIR)/offsets \
         -I$(THEOS_PROJECT_DIR)/vendor/Dobby \
         -I$(THEOS_PROJECT_DIR)/vendor/Dobby/include \
@@ -122,6 +124,6 @@ Aurora_CFLAGS = -fobjc-arc -fvisibility=hidden -DDOBBY_LOGGING_DISABLE -DBUILD_W
         -I$(THEOS_PROJECT_DIR)/vendor/Luau/Compiler/include \
         -I$(THEOS_PROJECT_DIR)/vendor/Luau/Ast/include \
         -I$(THEOS_PROJECT_DIR)/vendor/Luau/Bytecode/include
-Aurora_CCFLAGS = -std=c++17 -Wno-reorder-ctor -Wno-sometimes-uninitialized -Wno-unused-variable -Wno-unused-function -Wno-macro-redefined -Wno-logical-op-parentheses -Wno-missing-braces -I$(THEOS_PROJECT_DIR) -I$(THEOS_PROJECT_DIR)/managers/core -I$(THEOS_PROJECT_DIR)/managers/hooks -I$(THEOS_PROJECT_DIR)/managers/functions -I$(THEOS_PROJECT_DIR)/managers/roblox -I$(THEOS_PROJECT_DIR)/offsets -I$(THEOS_PROJECT_DIR)/vendor/Dobby -I$(THEOS_PROJECT_DIR)/vendor/Dobby/include -I$(THEOS_PROJECT_DIR)/vendor/Dobby/source -I$(THEOS_PROJECT_DIR)/vendor/Dobby/source/dobby -I$(THEOS_PROJECT_DIR)/vendor/Dobby/external -I$(THEOS_PROJECT_DIR)/vendor/Dobby/external/logging -I$(THEOS_PROJECT_DIR)/vendor/Dobby/builtin-plugin -I$(THEOS_PROJECT_DIR)/vendor/Dobby/builtin-plugin/SymbolResolver -I$(THEOS_PROJECT_DIR)/vendor/Dobby/source/Backend/UserMode -I$(THEOS_PROJECT_DIR)/vendor/Luau/VM/include -I$(THEOS_PROJECT_DIR)/vendor/Luau/VM/src -I$(THEOS_PROJECT_DIR)/vendor/Luau/Common/include -I$(THEOS_PROJECT_DIR)/vendor/Luau/Common/include/Luau -I$(THEOS_PROJECT_DIR)/vendor/Luau/Compiler/include -I$(THEOS_PROJECT_DIR)/vendor/Luau/Ast/include -I$(THEOS_PROJECT_DIR)/vendor/Luau/Bytecode/include
-Aurora_FRAMEWORKS = Foundation
+Aurora_CCFLAGS = -std=c++17 -Wno-reorder-ctor -Wno-sometimes-uninitialized -Wno-unused-variable -Wno-unused-function -Wno-macro-redefined -Wno-logical-op-parentheses -Wno-missing-braces -I$(THEOS_PROJECT_DIR) -I$(THEOS_PROJECT_DIR)/managers/core -I$(THEOS_PROJECT_DIR)/managers/hooks -I$(THEOS_PROJECT_DIR)/managers/functions -I$(THEOS_PROJECT_DIR)/managers/roblox -I$(THEOS_PROJECT_DIR)/managers/utility -I$(THEOS_PROJECT_DIR)/offsets -I$(THEOS_PROJECT_DIR)/vendor/Dobby -I$(THEOS_PROJECT_DIR)/vendor/Dobby/include -I$(THEOS_PROJECT_DIR)/vendor/Dobby/source -I$(THEOS_PROJECT_DIR)/vendor/Dobby/source/dobby -I$(THEOS_PROJECT_DIR)/vendor/Dobby/external -I$(THEOS_PROJECT_DIR)/vendor/Dobby/external/logging -I$(THEOS_PROJECT_DIR)/vendor/Dobby/builtin-plugin -I$(THEOS_PROJECT_DIR)/vendor/Dobby/builtin-plugin/SymbolResolver -I$(THEOS_PROJECT_DIR)/vendor/Dobby/source/Backend/UserMode -I$(THEOS_PROJECT_DIR)/vendor/Luau/VM/include -I$(THEOS_PROJECT_DIR)/vendor/Luau/VM/src -I$(THEOS_PROJECT_DIR)/vendor/Luau/Common/include -I$(THEOS_PROJECT_DIR)/vendor/Luau/Common/include/Luau -I$(THEOS_PROJECT_DIR)/vendor/Luau/Compiler/include -I$(THEOS_PROJECT_DIR)/vendor/Luau/Ast/include -I$(THEOS_PROJECT_DIR)/vendor/Luau/Bytecode/include
+Aurora_FRAMEWORKS = Foundation UIKit
 include $(THEOS)/makefiles/library.mk

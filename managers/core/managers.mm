@@ -1,6 +1,7 @@
 #import "../functions/function_mgr.hpp"
 #import "../hooks/hook_mgr.hpp"
 #import "../roblox/Roblox.hpp"
+#import "../utility/utility_mgr.hpp"
 #import "managers.hpp"
 #import <Foundation/Foundation.h>
 
@@ -13,6 +14,7 @@ void start_all(uintptr_t base) {
     function_mgr.start(base);
     hook_mgr.start();
     roblox_manager.start();
+    utility::utility_mgr.start();
     NSLog(@"[Aurora] all managers started (base=%p)", (void*)base);
 }
 
