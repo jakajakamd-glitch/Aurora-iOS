@@ -7,6 +7,7 @@ Aurora_FILES = Aurora.mm \
         managers/hooks/hook_mgr.mm \
         managers/functions/function_mgr.mm \
         managers/roblox/Roblox.mm \
+        managers/roblox/Environment.mm \
         managers/utility/utility_mgr.mm \
         vendor/Dobby/source/core/assembler/assembler-arm.cc \
         vendor/Dobby/source/core/assembler/assembler-ia32.cc \

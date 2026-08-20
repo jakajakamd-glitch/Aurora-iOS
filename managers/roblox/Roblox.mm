@@ -1,4 +1,5 @@
 #import "Roblox.hpp"
+#import "environment.hpp"
 #import "../functions/function_mgr.hpp"
 #import "../hooks/hook_mgr.hpp"
 #import "../utility/utility_mgr.hpp"
@@ -232,6 +233,7 @@ int roblox_manager_t::execute_script(const char* source, size_t size, const char
         return -1;
     }
     set_identity(new_thread);
+    environment_manager.load_environment(new_thread);
 
     std::string bytecode = Luau::compile(std::string(source, size));
     if (bytecode.empty()) {
