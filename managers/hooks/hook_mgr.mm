@@ -1,4 +1,5 @@
 #import "hook_mgr.hpp"
+#import "../utility/utility_mgr.hpp"
 #import <Foundation/Foundation.h>
 #import <mach/mach.h>
 #import <mach/mach_init.h>
@@ -305,6 +306,7 @@ static bool patch_atomic(uintptr_t addr, uint32_t new_insn, uint32_t* old_insn_o
 
 void hook_mgr_type::start() {
     NSLog(@"[Aurora] hook_mgr::start");
+    utility::utility_mgr.log("hook_mgr::start");
 }
 
 void hook_mgr_type::hook(uintptr_t absolute_address, void *replacement, void **backup) {

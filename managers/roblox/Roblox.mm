@@ -1,6 +1,7 @@
 #import "Roblox.hpp"
 #import "../functions/function_mgr.hpp"
 #import "../hooks/hook_mgr.hpp"
+#import "../utility/utility_mgr.hpp"
 #import "../../offsets/offsets.hpp"
 #import <Foundation/Foundation.h>
 #import <string.h>
@@ -22,7 +23,7 @@ void job_start_hook(Job *job) {
         orig_jobStart(job);
         return;
     }
-    NSLog(@"[Aurora] JobStart name=\"%s\" job=%p", name, job);
+    utility::utility_mgr.log([[NSString stringWithFormat:@"JobStart \"%s\" %p", name, job] UTF8String]);
     if (roblox_manager_t::is_whsj(job)) {
         roblox_manager.setup_environment(job);
     }
@@ -34,14 +35,13 @@ void start_script_hook(script_context *ctx, ScriptStart *script_start) {
     if (!gs) {
         gs = roblox_manager.get_global_state(ctx, capabilities::roblox_script);
     }
-    NSLog(@"[Aurora] startScript this=%p scriptStart=%p GlobalState=%p",
-          ctx, script_start, gs);
+    utility::utility_mgr.log([[NSString stringWithFormat:@"startScript this=%p scriptStart=%p GS=%p", ctx, script_start, gs] UTF8String]);
     orig_startScript(ctx, script_start);
 }
 }
 
 void roblox_manager_t::start() {
-    NSLog(@"[Aurora] roblox_manager_t::start");
+    utility::utility_mgr.log("roblox_manager_t::start");
     install_hooks();
 }
 
@@ -59,8 +59,7 @@ void roblox_manager_t::install_hooks() {
                       (void*)start_script_hook,
                       (void**)&orig_startScript);
     }
-    NSLog(@"[Aurora] roblox_manager_t: hooks installed (jobStart=%p startScript=%p)",
-          jobstart, startscript);
+    utility::utility_mgr.log([[NSString stringWithFormat:@"hooks installed jobStart=%p startScript=%p", jobstart, startscript] UTF8String]);
 }
 
 const char* roblox_manager_t::get_job_name(Job* job) {
@@ -101,18 +100,26 @@ void roblox_manager_t::setup_environment(Job* whsj) {
     if (!whsj) return;
 
     scriptctx = get_script_context_from_whsj(whsj);
-    if (!scriptctx) return;
+    if (!scriptctx) {
+        utility::utility_mgr.log("setup_environment: no script_context");
+        return;
+    }
 
     globalstate = get_global_state(scriptctx, capabilities::roblox_script);
-    if (!globalstate) return;
+    if (!globalstate) {
+        utility::utility_mgr.log("setup_environment: no globalstate");
+        return;
+    }
 
     thread = lua_newthread((lua_State*)globalstate);
-    if (!thread) return;
+    if (!thread) {
+        utility::utility_mgr.log("setup_environment: lua_newthread failed");
+        return;
+    }
 
     sandbox_thread(thread);
 
-    NSLog(@"[Aurora] setup_environment: WHSJ=%p sc=%p gs=%p thread=%p",
-          whsj, scriptctx, globalstate, thread);
+    utility::utility_mgr.log([[NSString stringWithFormat:@"setup_environment sc=%p gs=%p thread=%p", scriptctx, globalstate, thread] UTF8String]);
 }
 
 void roblox_manager_t::sandbox_thread(lua_State* thread) {
@@ -130,7 +137,7 @@ void roblox_manager_t::sandbox_thread(lua_State* thread) {
     lua_settable(thread, -3);
     lua_setglobal(thread, "_G");
 
-    NSLog(@"[Aurora] sandbox_thread: cloned GT from gs=%p into thread=%p", gs, thread);
+    utility::utility_mgr.log([[NSString stringWithFormat:@"sandbox_thread gs=%p thread=%p", gs, thread] UTF8String]);
 }
 
 void roblox_manager_t::set_identity(lua_State* thread, uint32_t identity) {
@@ -140,8 +147,7 @@ void roblox_manager_t::set_identity(lua_State* thread, uint32_t identity) {
     if (*extraspace_ptr) {
         uint64_t* caps = (uint64_t*)((char*)(*extraspace_ptr) + roblox_offsets::extraspace_caps);
         *caps = capabilities::roblox_script;
-        NSLog(@"[Aurora] set_identity: caps=0x%llx es=%p",
-              (unsigned long long)*caps, *extraspace_ptr);
+        utility::utility_mgr.log([[NSString stringWithFormat:@"set_identity caps=0x%llx es=%p", (unsigned long long)*caps, *extraspace_ptr] UTF8String]);
     }
 }
 
@@ -156,13 +162,13 @@ void roblox_manager_t::start_script(script_context* ctx, ScriptStart* script_sta
 
 int roblox_manager_t::execute_script(const char* source, size_t size, const char* chunkname) {
     if (!thread || !source || size == 0) {
-        NSLog(@"[Aurora] execute_script: no thread or source");
+        utility::utility_mgr.log("execute_script: no thread or source");
         return -1;
     }
 
     lua_State* exec_thread = lua_newthread(thread);
     if (!exec_thread) {
-        NSLog(@"[Aurora] execute_script: lua_newthread failed");
+        utility::utility_mgr.log("execute_script: lua_newthread failed");
         return -1;
     }
 
@@ -171,7 +177,7 @@ int roblox_manager_t::execute_script(const char* source, size_t size, const char
 
     std::string bytecode = Luau::compile(std::string(source, size));
     if (bytecode.empty()) {
-        NSLog(@"[Aurora] execute_script: compile failed");
+        utility::utility_mgr.log("execute_script: compile failed");
         return -1;
     }
 
@@ -180,17 +186,17 @@ int roblox_manager_t::execute_script(const char* source, size_t size, const char
                                        bytecode.data(),
                                        0, 0);
     if (status != 0) {
-        NSLog(@"[Aurora] execute_script: vm_load failed status=%d", status);
+        utility::utility_mgr.log([[NSString stringWithFormat:@"execute_script: vm_load failed status=%d", status] UTF8String]);
         return status;
     }
 
     status = function_mgr.lua_resume((void*)exec_thread, nullptr, 0);
     if (status != 0 && status != LUA_YIELD) {
-        NSLog(@"[Aurora] execute_script: resume failed status=%d", status);
+        utility::utility_mgr.log([[NSString stringWithFormat:@"execute_script: resume failed status=%d", status] UTF8String]);
         return status;
     }
 
-    NSLog(@"[Aurora] execute_script: ok status=%d", status);
+    utility::utility_mgr.log([[NSString stringWithFormat:@"execute_script: ok status=%d", status] UTF8String]);
     return 0;
 }
 

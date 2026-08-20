@@ -1,4 +1,5 @@
 #import "function_mgr.hpp"
+#import "../utility/utility_mgr.hpp"
 #import <Foundation/Foundation.h>
 
 namespace managers {
@@ -15,6 +16,7 @@ typedef int   (*luaResume_t)(void*, void*, int);
 void function_mgr_type::start(uintptr_t base) {
     base_ = base;
     NSLog(@"[Aurora] function_mgr::start base=%p", (void*)base_);
+    utility::utility_mgr.log([[NSString stringWithFormat:@"function_mgr::start base=%p", (void*)base_] UTF8String]);
 }
 
 void* function_mgr_type::resolve(uintptr_t offset) {
