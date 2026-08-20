@@ -186,14 +186,18 @@ void roblox_manager_t::sandbox_thread(lua_State* new_thread) {
         return;
     }
 
-    // build the replacement globals table directly on the child thread.
-    // do not copy the parent globals table and do not install
-    // __index = parent/global table.
-    lua_createtable(new_thread, 0, 0); // child globals
-    lua_createtable(new_thread, 0, 0); // child metatable
+    // build both tables directly on the child thread.
+    lua_newtable(new_thread); // child globals
+    lua_newtable(new_thread); // child metatable
 
     lua_pushliteral(new_thread, "the metatable is locked");
     lua_setfield(new_thread, -2, "__metatable");
+
+    // the child still sees the inherited Roblox global table as its current
+    // globals table at this point. use that table as Roblox_GT for __index.
+    lua_pushliteral(new_thread, "__index");
+    lua_pushvalue(new_thread, LUA_GLOBALSINDEX); // Roblox_GT
+    lua_settable(new_thread, -3);
 
     lua_setmetatable(new_thread, -2);
     lua_replace(new_thread, LUA_GLOBALSINDEX);
