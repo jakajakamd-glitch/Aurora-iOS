@@ -2,7 +2,7 @@
 
 #include <cstdint>
 
-namespace ROBLOX_OFFSETS {
+namespace roblox_offsets {
 
 constexpr uintptr_t job_name       = 0x18;
 constexpr uintptr_t job_name_flag  = 0x2f;
