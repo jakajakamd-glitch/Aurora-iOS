@@ -30,7 +30,7 @@ void job_start_hook(Job *job) {
 }
 
 void start_script_hook(script_context *ctx, ScriptStart *script_start) {
-    script_context *gs = roblox_manager.gs();
+    script_context *gs = roblox_manager.globalstate;
     if (!gs) {
         gs = roblox_manager.get_global_state(ctx, capabilities::roblox_script);
     }
@@ -96,32 +96,23 @@ script_context* roblox_manager_t::get_global_state(script_context* ctx, uint64_t
 void roblox_manager_t::setup_environment(Job* whsj) {
     scriptctx   = nullptr;
     globalstate = nullptr;
-    threadptr   = nullptr;
+    thread      = nullptr;
 
     if (!whsj) return;
 
     scriptctx = get_script_context_from_whsj(whsj);
-    if (!scriptctx) {
-        NSLog(@"[Aurora] setup_environment: WHSJ %p has no script_context", whsj);
-        return;
-    }
+    if (!scriptctx) return;
 
     globalstate = get_global_state(scriptctx, capabilities::roblox_script);
-    if (!globalstate) {
-        NSLog(@"[Aurora] setup_environment: GlobalState resolve failed for sc=%p", scriptctx);
-        return;
-    }
+    if (!globalstate) return;
 
-    threadptr = lua_newthread((lua_State*)globalstate);
-    if (!threadptr) {
-        NSLog(@"[Aurora] setup_environment: lua_newthread failed");
-        return;
-    }
+    thread = lua_newthread((lua_State*)globalstate);
+    if (!thread) return;
 
-    sandbox_thread(threadptr);
+    sandbox_thread(thread);
 
     NSLog(@"[Aurora] setup_environment: WHSJ=%p sc=%p gs=%p thread=%p",
-          whsj, scriptctx, globalstate, threadptr);
+          whsj, scriptctx, globalstate, thread);
 }
 
 void roblox_manager_t::sandbox_thread(lua_State* thread) {
@@ -142,6 +133,18 @@ void roblox_manager_t::sandbox_thread(lua_State* thread) {
     NSLog(@"[Aurora] sandbox_thread: cloned GT from gs=%p into thread=%p", gs, thread);
 }
 
+void roblox_manager_t::set_identity(lua_State* thread, uint32_t identity) {
+    if (!thread) return;
+
+    void** extraspace_ptr = (void**)((char*)thread + roblox_offsets::extraspace_ptr_l);
+    if (*extraspace_ptr) {
+        uint64_t* caps = (uint64_t*)((char*)(*extraspace_ptr) + roblox_offsets::extraspace_caps);
+        *caps = capabilities::roblox_script;
+        NSLog(@"[Aurora] set_identity: caps=0x%llx es=%p",
+              (unsigned long long)*caps, *extraspace_ptr);
+    }
+}
+
 lua_State* roblox_manager_t::lua_newthread(lua_State* L) {
     if (!L) return nullptr;
     return ::lua_newthread(L);
@@ -152,18 +155,19 @@ void roblox_manager_t::start_script(script_context* ctx, ScriptStart* script_sta
 }
 
 int roblox_manager_t::execute_script(const char* source, size_t size, const char* chunkname) {
-    if (!threadptr || !source || size == 0) {
+    if (!thread || !source || size == 0) {
         NSLog(@"[Aurora] execute_script: no thread or source");
         return -1;
     }
 
-    void** extraspace_ptr = (void**)((char*)threadptr + roblox_offsets::extraspace_ptr_l);
-    if (*extraspace_ptr) {
-        uint64_t* caps = (uint64_t*)((char*)(*extraspace_ptr) + roblox_offsets::extraspace_caps);
-        *caps = capabilities::roblox_script;
-        NSLog(@"[Aurora] execute_script: set caps=0x%llx at es=%p",
-              (unsigned long long)*caps, *extraspace_ptr);
+    lua_State* exec_thread = lua_newthread(thread);
+    if (!exec_thread) {
+        NSLog(@"[Aurora] execute_script: lua_newthread failed");
+        return -1;
     }
+
+    sandbox_thread(exec_thread);
+    set_identity(exec_thread, 2);
 
     std::string bytecode = Luau::compile(std::string(source, size));
     if (bytecode.empty()) {
@@ -171,7 +175,7 @@ int roblox_manager_t::execute_script(const char* source, size_t size, const char
         return -1;
     }
 
-    int status = function_mgr.vm_load((void*)threadptr,
+    int status = function_mgr.vm_load((void*)exec_thread,
                                        chunkname ? chunkname : "aurora",
                                        bytecode.data(),
                                        0, 0);
@@ -180,7 +184,7 @@ int roblox_manager_t::execute_script(const char* source, size_t size, const char
         return status;
     }
 
-    status = function_mgr.lua_resume((void*)threadptr, nullptr, 0);
+    status = function_mgr.lua_resume((void*)exec_thread, nullptr, 0);
     if (status != 0 && status != LUA_YIELD) {
         NSLog(@"[Aurora] execute_script: resume failed status=%d", status);
         return status;
