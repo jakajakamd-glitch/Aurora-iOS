@@ -423,7 +423,6 @@ static void traverseproto(global_State* g, Proto* f)
 
 static void traverseclosure(global_State* g, Closure* cl)
 {
-    markobject(g, cl->env);
     if (cl->tt == 7)
     {
         if (FFlag::LuauManagedDebugNames)
@@ -438,6 +437,7 @@ static void traverseclosure(global_State* g, Closure* cl)
     }
     else
     {
+        markobject(g, cl->l.env);
         int i;
         LUAU_ASSERT(cl->nupvalues == cl->l.p->nups);
         markobject(g, cast_to(Proto*, cl->l.p));

@@ -208,25 +208,16 @@ const SizeClassConfig kSizeClassConfig;
 
 struct lua_Page
 {
-    // list of pages with free blocks
     lua_Page* prev;
     lua_Page* next;
-
-    // list of all pages
     lua_Page* listprev;
     lua_Page* listnext;
-
-    int pageSize;  // page size in bytes, including page header
-    int blockSize; // block size in bytes, including block header (for non-GCO)
-
-    void* freeList; // next free block in this page; linked with metadata()/freegcolink()
-    int freeNext;   // next free block offset in this page, in bytes; when negative, freeList is used instead
-    int busyBlocks; // number of blocks allocated out of this page
-
-    // provide additional padding based on current object size to provide 16 byte alignment of data
-    // later static_assert checks that this requirement is held
-    char padding[sizeof(void*) == 8 ? 8 : 12];
-
+    int pageSize;
+    int blockSize;
+    void* freeList;
+    int freeNext;
+    int busyBlocks;
+    uint8_t reserved_38[0x08];
     char data[1];
 };
 
@@ -268,9 +259,9 @@ static lua_Page* newpage(lua_State* L, lua_Page** pageset, int pageSize, int blo
 
     if (pageset)
     {
-        page->listnext = *pageset;
-        if (page->listnext)
-            page->listnext->listprev = page;
+        page->next = *pageset;
+        if (page->next)
+            page->next->prev = page;
         *pageset = page;
     }
 
@@ -302,14 +293,13 @@ static void freepage(lua_State* L, lua_Page** pageset, lua_Page* page)
 
     if (pageset)
     {
-        // remove page from alllist
-        if (page->listnext)
-            page->listnext->listprev = page->listprev;
+        if (page->next)
+            page->next->prev = page->prev;
 
-        if (page->listprev)
-            page->listprev->listnext = page->listnext;
+        if (page->prev)
+            page->prev->next = page->next;
         else if (*pageset == page)
-            *pageset = page->listnext;
+            *pageset = page->next;
     }
 
     // so long
@@ -318,14 +308,13 @@ static void freepage(lua_State* L, lua_Page** pageset, lua_Page* page)
 
 static void freeclasspage(lua_State* L, lua_Page** freepageset, lua_Page** pageset, lua_Page* page, uint8_t sizeClass)
 {
-    // remove page from freelist
-    if (page->next)
-        page->next->prev = page->prev;
+    if (page->listnext)
+        page->listnext->listprev = page->listprev;
 
-    if (page->prev)
-        page->prev->next = page->next;
+    if (page->listprev)
+        page->listprev->listnext = page->listnext;
     else if (freepageset[sizeClass] == page)
-        freepageset[sizeClass] = page->next;
+        freepageset[sizeClass] = page->listnext;
 
     freepage(L, pageset, page);
 }
@@ -339,7 +328,7 @@ static void* newblock(lua_State* L, int sizeClass)
     if (!page)
         page = newclasspage(L, g->freepages, debugpageset(&g->allpages), sizeClass, true);
 
-    LUAU_ASSERT(!page->prev);
+    LUAU_ASSERT(!page->listprev);
     LUAU_ASSERT(page->freeList || page->freeNext >= 0);
     LUAU_ASSERT(size_t(page->blockSize) == kSizeClassConfig.sizeOfClass[sizeClass] + kBlockHeader);
 
@@ -368,10 +357,10 @@ static void* newblock(lua_State* L, int sizeClass)
     // if we allocate the last block out of a page, we need to remove it from free list
     if (!page->freeList && page->freeNext < 0)
     {
-        g->freepages[sizeClass] = page->next;
-        if (page->next)
-            page->next->prev = NULL;
-        page->next = NULL;
+        g->freepages[sizeClass] = page->listnext;
+        if (page->listnext)
+            page->listnext->listprev = NULL;
+        page->listnext = NULL;
     }
 
     // the user data is right after the metadata
@@ -387,7 +376,7 @@ static LUAU_FORCEINLINE void* newgcoblock(lua_State* L, int sizeClass)
     if (!page)
         page = newclasspage(L, g->freegcopages, &g->allgcopages, sizeClass, false);
 
-    LUAU_ASSERT(!page->prev);
+    LUAU_ASSERT(!page->listprev);
     LUAU_ASSERT(page->freeList || page->freeNext >= 0);
     LUAU_ASSERT(page->blockSize == kSizeClassConfig.sizeOfClass[sizeClass]);
 
@@ -414,10 +403,10 @@ static LUAU_FORCEINLINE void* newgcoblock(lua_State* L, int sizeClass)
     // if we allocate the last block out of a page, we need to remove it from free list
     if (!page->freeList && page->freeNext < 0)
     {
-        g->freegcopages[sizeClass] = page->next;
-        if (page->next)
-            page->next->prev = NULL;
-        page->next = NULL;
+        g->freegcopages[sizeClass] = page->listnext;
+        if (page->listnext)
+            page->listnext->listprev = NULL;
+        page->listnext = NULL;
     }
 
     return block;
@@ -439,12 +428,12 @@ static void freeblock(lua_State* L, int sizeClass, void* block)
     // if the page wasn't in the page free list, it should be now since it got a block!
     if (!page->freeList && page->freeNext < 0)
     {
-        LUAU_ASSERT(!page->prev);
-        LUAU_ASSERT(!page->next);
+        LUAU_ASSERT(!page->listprev);
+        LUAU_ASSERT(!page->listnext);
 
-        page->next = g->freepages[sizeClass];
-        if (page->next)
-            page->next->prev = page;
+        page->listnext = g->freepages[sizeClass];
+        if (page->listnext)
+            page->listnext->listprev = page;
         g->freepages[sizeClass] = page;
     }
 
@@ -472,12 +461,12 @@ static LUAU_FORCEINLINE void freegcoblock(lua_State* L, int sizeClass, void* blo
     // if the page wasn't in the page free list, it should be now since it got a block!
     if (!page->freeList && page->freeNext < 0)
     {
-        LUAU_ASSERT(!page->prev);
-        LUAU_ASSERT(!page->next);
+        LUAU_ASSERT(!page->listprev);
+        LUAU_ASSERT(!page->listnext);
 
-        page->next = g->freegcopages[sizeClass];
-        if (page->next)
-            page->next->prev = page;
+        page->listnext = g->freegcopages[sizeClass];
+        if (page->listnext)
+            page->listnext->listprev = page;
         g->freegcopages[sizeClass] = page;
     }
 
@@ -645,7 +634,7 @@ void luaM_getpageinfo(lua_Page* page, int* pageBlocks, int* busyBlocks, int* blo
 
 lua_Page* luaM_getnextpage(lua_Page* page)
 {
-    return page->listnext;
+    return page->next;
 }
 
 void luaM_visitpage(lua_Page* page, void* context, bool (*visitor)(void* context, lua_Page* page, GCObject* gco))

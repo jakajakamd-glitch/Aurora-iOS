@@ -84,7 +84,7 @@ static LuaTable* getcurrenv(lua_State* L)
     if (L->ci == L->base_ci) // no enclosing function?
         return L->gt;        // use global table as environment
     else
-        return curr_func(L)->env;
+        return curr_func(L)->tt == 7 ? L->gt : curr_func(L)->l.env;
 }
 
 static LUAU_NOINLINE TValue* pseudo2addr(lua_State* L, int idx)
@@ -309,8 +309,9 @@ void lua_replace(lua_State* L, int idx)
     {
         api_check(L, L->ci != L->base_ci);
         Closure* func = curr_func(L);
+        api_check(L, func->tt != 7);
         api_check(L, ttistable(L->top - 1));
-        func->env = hvalue(L->top - 1);
+        func->l.env = hvalue(L->top - 1);
         luaC_barrier(L, func, L->top - 1);
     }
     else if (idx == LUA_GLOBALSINDEX)
@@ -972,7 +973,7 @@ void lua_getfenv(lua_State* L, int idx)
     switch (ttype(o))
     {
     case LUA_TFUNCTION:
-        sethvalue(L, L->top, clvalue(o)->env);
+        sethvalue(L, L->top, clvalue(o)->tt == 7 ? L->gt : clvalue(o)->l.env);
         break;
     case LUA_TTHREAD:
         sethvalue(L, L->top, thvalue(o)->gt);
@@ -1105,7 +1106,8 @@ int lua_setfenv(lua_State* L, int idx)
     switch (ttype(o))
     {
     case LUA_TFUNCTION:
-        clvalue(o)->env = hvalue(L->top - 1);
+        api_check(L, clvalue(o)->tt != 7);
+        clvalue(o)->l.env = hvalue(L->top - 1);
         break;
     case LUA_TTHREAD:
         thvalue(o)->gt = hvalue(L->top - 1);

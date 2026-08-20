@@ -70,7 +70,7 @@ static void validatetable(global_State* g, LuaTable* h)
 
 static void validateclosure(global_State* g, Closure* cl)
 {
-    validateobjref(g, obj2gco(cl), obj2gco(cl->env));
+    validateobjref(g, obj2gco(cl), obj2gco(cl->l.env));
 
     if (cl->tt == 7)
     {
@@ -411,7 +411,7 @@ static void dumpclosure(FILE* f, Closure* cl)
     );
 
     fprintf(f, ",\"env\":");
-    dumpref(f, obj2gco(cl->env));
+    dumpref(f, obj2gco(cl->l.env));
 
     if (cl->tt == 7)
     {
@@ -858,7 +858,7 @@ static void enumclosure(EnumContext* ctx, Closure* cl)
         enumnode(ctx, obj2gco(cl), sizeLclosure(cl->nupvalues), buf);
     }
 
-    enumedge(ctx, obj2gco(cl), obj2gco(cl->env), "env");
+    enumedge(ctx, obj2gco(cl), obj2gco(cl->l.env), "env");
 
     if (cl->tt == 7)
     {

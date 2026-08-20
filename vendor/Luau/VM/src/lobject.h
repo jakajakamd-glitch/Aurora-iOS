@@ -527,34 +527,33 @@ typedef struct UpVal
 /*
 ** Closures
 **
-** VERIFIED from luaF_newLclosure (0x25a8e14):
-**   alloc size = 0x20 + nupvals * 0x10
-**   strb w8=8, [x0]          → +0x00 = tt = 8 (LUA_TFUNCTION)
-**   strb w9, [x0, 1]         → +0x01 = memcat
-**   strb w8, [x0, 2]         → +0x02 = marked (white bits)
-**   strb wzr, [x0, 3]        → +0x03 = isC = 0 (L closure)
-**   strb w9, [x0, 4]         → +0x04 = stacksize (from proto+3)
-**   strb w19, [x0, 5]        → +0x05 = nupvalues
-**   strb wzr, [x0, 6]        → +0x06 = preload = 0
-**   stp x22, x20, [x0, 0x10] → +0x10 = env (LuaTable*), +0x18 = p (Proto*)
-**
-** luau_execute confirms: add x11, x22, 0x18 → &cl.l.p at Closure+0x18
+** Roblox-reversed layout:
+**   Lua closure: alloc size = 0x20 + nupvalues * 0x10, env +0x10, proto +0x18, uprefs +0x20.
+**   C closure: alloc size = 0x30 + nupvalues * 0x10, function +0x10, continuation +0x18,
+**   debug-name fields +0x20/+0x28, upvalues +0x30.
+**   Both closure kinds use tt=8 for Lua and tt=7 for C.
 */
 typedef struct Closure
 {
-    CommonHeader;              // +0x00 tt, memcat, marked
+    CommonHeader;
 
-    uint8_t isC;               // +0x03
-    uint8_t stacksize;         // +0x04
-    uint8_t nupvalues;         // +0x05
-    uint8_t preload;           // +0x06
-    uint8_t _pad_07;           // +0x07
+    uint8_t isC;
+    uint8_t stacksize;
+    uint8_t nupvalues;
+    uint8_t preload;
+    uint8_t _pad_07;
 
-    GCObject* gclist;          // +0x08
-    struct LuaTable* env;      // +0x10 (VERIFIED: stp x22, x20, [x0, 0x10])
+    GCObject* gclist;
 
     union
     {
+        struct
+        {
+            struct LuaTable* env;
+            struct Proto* p;
+            TValue uprefs[1];
+        } l;
+
         struct
         {
             lua_CFunction f;
@@ -563,13 +562,6 @@ typedef struct Closure
             TString* debugname;
             TValue upvals[1];
         } c;
-
-        struct
-        {
-            struct Proto* p;   // +0x18 (VERIFIED: stp x22, x20, [x0, 0x10] stores x20=proto at +0x18)
-                               //         luau_execute: add x11, x22, 0x18 → &cl.l.p
-            TValue uprefs[1];
-        } l;
     };
 } Closure;
 
