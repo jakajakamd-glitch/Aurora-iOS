@@ -112,37 +112,10 @@ void roblox_manager_t::setup_environment(Job* whsj) {
         return;
     }
 
-    aurora_thread = ::luaL_newstate();
-    if (!aurora_thread) {
-        NSLog(@"[Aurora] setup_environment: luaL_newstate failed");
-        return;
-    }
-    ::luaL_openlibs(aurora_thread);
-
-    sandbox_thread(aurora_thread);
-
-    luathread = aurora_thread;
+    luathread = lua_newthread((lua_State*)globalstate);
 
     NSLog(@"[Aurora] setup_environment: WHSJ=%p sc=%p gs=%p thread=%p",
           whsj, scriptctx, globalstate, luathread);
-}
-
-void roblox_manager_t::sandbox_thread(lua_State* new_thread) {
-    if (!new_thread || !globalstate) return;
-
-    lua_State* gs = (lua_State*)globalstate;
-
-    lua_pushvalue(gs, LUA_GLOBALSINDEX);
-    lua_pushvalue(gs, -1);
-    lua_xmove(gs, new_thread, 1);
-
-    lua_newtable(new_thread);
-    lua_pushstring(new_thread, "_G");
-    lua_pushvalue(new_thread, -3);
-    lua_settable(new_thread, -3);
-    lua_setglobal(new_thread, "_G");
-
-    NSLog(@"[Aurora] sandbox_thread: cloned GT from gs=%p into thread=%p", gs, new_thread);
 }
 
 lua_State* roblox_manager_t::lua_newthread(lua_State* L) {
