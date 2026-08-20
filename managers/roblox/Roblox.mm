@@ -8,6 +8,7 @@
 #include "lua.h"
 #include "lualib.h"
 #include "lstate.h"
+#include "lapi.h"
 #include "Luau/Compiler.h"
 
 namespace managers {
@@ -42,18 +43,36 @@ void set_one_proto_caps(proto_view* proto, void* capability_record) {
 }
 
 void set_proto_caps(lua_State* l, int closure_index, void* capability_record) {
-    const void* obj = lua_topointer(l, closure_index);
-    if (!obj) return;
+    if (!l || !capability_record || lua_type(l, closure_index) != LUA_TFUNCTION) {
+        return;
+    }
 
-    lua_closure_view* closure = (lua_closure_view*)obj;
+    const void* object = lua_topointer(l, closure_index);
+    if (!object) {
+        return;
+    }
+
+    lua_closure_view* closure = const_cast<lua_closure_view*>(
+        reinterpret_cast<const lua_closure_view*>(object)
+    );
     proto_view* root = closure->proto;
-    if (!root) return;
+    if (!root || !root->child_protos && root->child_proto_count != 0) {
+        return;
+    }
 
     set_one_proto_caps(root, capability_record);
 
     for (uint32_t i = 0; i < root->child_proto_count; ++i) {
         set_one_proto_caps(root->child_protos[i], capability_record);
     }
+}
+
+void set_identity(lua_State* l) {
+    if (!l || !l->userdata) {
+        return;
+    }
+
+    l->userdata->capabilities = final_caps;
 }
 
 void (*orig_jobStart)(Job*) = nullptr;
@@ -157,18 +176,25 @@ void roblox_manager_t::setup_environment(Job* whsj) {
     }
 
     sandbox_thread(thread);
+    set_identity(thread);
 
     utility::utility_mgr.log([[NSString stringWithFormat:@"setup_environment sc=%p state=%p thread=%p", scriptctx, selected_state, thread] UTF8String]);
 }
 
 void roblox_manager_t::sandbox_thread(lua_State* new_thread) {
-    lua_createtable(new_thread, 0, 0);
-    lua_createtable(new_thread, 0, 0);
+    if (!new_thread) {
+        return;
+    }
+
+    // build the replacement globals table directly on the child thread.
+    // do not copy the parent globals table and do not install
+    // __index = parent/global table.
+    lua_createtable(new_thread, 0, 0); // child globals
+    lua_createtable(new_thread, 0, 0); // child metatable
+
     lua_pushliteral(new_thread, "the metatable is locked");
     lua_setfield(new_thread, -2, "__metatable");
-    lua_pushliteral(new_thread, "__index");
-    lua_pushvalue(new_thread, LUA_GLOBALSINDEX);
-    lua_settable(new_thread, -3);
+
     lua_setmetatable(new_thread, -2);
     lua_replace(new_thread, LUA_GLOBALSINDEX);
 }
@@ -200,7 +226,7 @@ int roblox_manager_t::execute_script(const char* source, size_t size, const char
         utility::utility_mgr.log("execute_script: no execution context");
         return -1;
     }
-    new_thread->userdata->capabilities = final_caps;
+    set_identity(new_thread);
 
     std::string bytecode = Luau::compile(std::string(source, size));
     if (bytecode.empty()) {
