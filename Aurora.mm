@@ -1,10 +1,10 @@
 #import <Foundation/Foundation.h>
 #import <mach-o/dyld.h>
 #import <dispatch/dispatch.h>
-#import "function_mgr.hpp"
-#import "hook_mgr.hpp"
-#import "Roblox.hpp"
-#import "managers.hpp"
+#import "managers/functions/function_mgr.hpp"
+#import "managers/hooks/hook_mgr.hpp"
+#import "managers/roblox/Roblox.hpp"
+#import "managers/core/managers.hpp"
 
 static const struct mach_header *find_image_header(NSString *image_basename) {
     const uint32_t image_count = _dyld_image_count();
