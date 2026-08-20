@@ -1,3 +1,14 @@
 .theos/
+
+build/
 *.o
 *.dylib
+*.a
+*.so
+
+DerivedData/
+*.xcuserstate
+.DS_Store
+
+*.tmp
+*.log
