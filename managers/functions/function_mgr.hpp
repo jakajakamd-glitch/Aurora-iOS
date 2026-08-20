@@ -17,7 +17,6 @@ public:
     static constexpr uintptr_t getGlobalState_offset = 0x1767794;
     static constexpr uintptr_t vmLoad_offset       = 0x0438dc50;
     static constexpr uintptr_t luaResume_offset    = 0x04370e34;
-    static constexpr uintptr_t onServiceProvider_offset = 0x01767b00;
     static constexpr uintptr_t getCapabilityRecord_offset = 0x01766d5c;
 
     void* get_global_state(void* scriptctx);

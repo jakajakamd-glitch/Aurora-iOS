@@ -16,10 +16,10 @@ roblox_manager_t roblox_manager;
 
 namespace {
 
-constexpr uint32_t IDENTITY = 8;
-constexpr uint64_t IDENTITY_CAPS = 0x200000000000003fULL;
-constexpr uint64_t FALLBACK_CAPS = 0x003fffffffffff00ULL;
-constexpr uint64_t FINAL_CAPS = IDENTITY_CAPS | FALLBACK_CAPS;
+constexpr uint32_t identity = 8;
+constexpr uint64_t identity_caps = 0x200000000000003fULL;
+constexpr uint64_t fallback_caps = 0x003fffffffffff00ULL;
+constexpr uint64_t final_caps = identity_caps | fallback_caps;
 
 struct proto_view {
     uint8_t unknown_00[0x20];
@@ -58,15 +58,6 @@ void set_proto_caps(lua_State* l, int closure_index, void* capability_record) {
 
 void (*orig_jobStart)(Job*) = nullptr;
 void (*orig_startScript)(script_context*, ScriptStart*) = nullptr;
-void (*orig_onServiceProvider)(script_context*, void*, void*) = nullptr;
-
-void on_service_provider_hook(script_context* ctx, void* oldprovider, void* newprovider) {
-    utility::utility_mgr.log([[NSString stringWithFormat:@"onServiceProvider ctx=%p old=%p new=%p", ctx, oldprovider, newprovider] UTF8String]);
-    if (newprovider) {
-        roblox_manager.setup_environment(nullptr);
-    }
-    orig_onServiceProvider(ctx, oldprovider, newprovider);
-}
 
 void job_start_hook(Job *job) {
     const char *name = roblox_manager_t::get_job_name(job);
@@ -99,7 +90,6 @@ void roblox_manager_t::start() {
 void roblox_manager_t::install_hooks() {
     void *jobstart    = function_mgr.resolve(function_mgr_type::jobstart_offset);
     void *startscript = function_mgr.resolve(function_mgr_type::startScript_offset);
-    void *onsp        = function_mgr.resolve(function_mgr_type::onServiceProvider_offset);
 
     if (jobstart) {
         hook_mgr.hook(reinterpret_cast<uintptr_t>(jobstart),
@@ -111,12 +101,7 @@ void roblox_manager_t::install_hooks() {
                       (void*)start_script_hook,
                       (void**)&orig_startScript);
     }
-    if (onsp) {
-        hook_mgr.hook(reinterpret_cast<uintptr_t>(onsp),
-                      (void*)on_service_provider_hook,
-                      (void**)&orig_onServiceProvider);
-    }
-    utility::utility_mgr.log([[NSString stringWithFormat:@"hooks installed jobStart=%p startScript=%p onSP=%p", jobstart, startscript, onsp] UTF8String]);
+    utility::utility_mgr.log([[NSString stringWithFormat:@"hooks installed jobStart=%p startScript=%p", jobstart, startscript] UTF8String]);
 }
 
 const char* roblox_manager_t::get_job_name(Job* job) {
@@ -215,7 +200,7 @@ int roblox_manager_t::execute_script(const char* source, size_t size, const char
         utility::utility_mgr.log("execute_script: no execution context");
         return -1;
     }
-    new_thread->userdata->capabilities = FINAL_CAPS;
+    new_thread->userdata->capabilities = final_caps;
 
     std::string bytecode = Luau::compile(std::string(source, size));
     if (bytecode.empty()) {
