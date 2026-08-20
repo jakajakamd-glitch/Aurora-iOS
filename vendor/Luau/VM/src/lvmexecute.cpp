@@ -387,7 +387,7 @@ reentry:
                 LUAU_ASSERT(ttisstring(kv));
 
                 // fast-path: value is in expected slot
-                LuaTable* h = cl->env;
+                LuaTable* h = cl->l.env;
                 int slot = LUAU_INSN_C(insn) & h->nodemask8;
                 LuaNode* n = &h->node[slot];
 
@@ -418,7 +418,7 @@ reentry:
                 LUAU_ASSERT(ttisstring(kv));
 
                 // fast-path: value is in expected slot
-                LuaTable* h = cl->env;
+                LuaTable* h = cl->l.env;
                 int slot = LUAU_INSN_C(insn) & h->nodemask8;
                 LuaNode* n = &h->node[slot];
 
@@ -481,7 +481,7 @@ reentry:
                 TValue* kv = VM_KV(LUAU_INSN_D(insn));
 
                 // fast-path: import resolution was successful and closure environment is "safe" for import
-                if (!ttisnil(kv) && cl->env->safeenv)
+                if (!ttisnil(kv) && cl->l.env->safeenv)
                 {
                     setobj2s(L, ra, kv);
                     pc++; // skip over AUX
@@ -491,7 +491,7 @@ reentry:
                 {
                     uint32_t aux = *pc++;
 
-                    VM_PROTECT(luaV_getimport(L, cl->env, k, ra, aux, /* propagatenil= */ false));
+                    VM_PROTECT(luaV_getimport(L, cl->l.env, k, ra, aux, /* propagatenil= */ false));
                     VM_NEXT();
                 }
             }
@@ -878,7 +878,7 @@ reentry:
                 VM_PROTECT_PC(); // luaF_newLclosure may fail due to OOM
 
                 // note: we save closure to stack early in case the code below wants to capture it by value
-                Closure* ncl = luaF_newLclosure(L, pv->nups, cl->env, pv);
+                Closure* ncl = luaF_newLclosure(L, pv->nups, cl->l.env, pv);
                 setclvalue(L, ra, ncl);
 
                 for (int ui = 0; ui < pv->nups; ++ui)
@@ -2807,7 +2807,7 @@ reentry:
                 VM_CASE_STKID ra = VM_REG(LUAU_INSN_A(insn));
 
                 // fast-path: ipairs/inext
-                if (cl->env->safeenv && ttistable(ra + 1) && ttisnumber(ra + 2) && nvalue(ra + 2) == 0.0)
+                if (cl->l.env->safeenv && ttistable(ra + 1) && ttisnumber(ra + 2) && nvalue(ra + 2) == 0.0)
                 {
                     setnilvalue(ra);
                     // ra+1 is already the table
@@ -2830,7 +2830,7 @@ reentry:
                 VM_CASE_STKID ra = VM_REG(LUAU_INSN_A(insn));
 
                 // fast-path: pairs/next
-                if (cl->env->safeenv && ttistable(ra + 1) && ttisnil(ra + 2))
+                if (cl->l.env->safeenv && ttistable(ra + 1) && ttisnil(ra + 2))
                 {
                     setnilvalue(ra);
                     // ra+1 is already the table
@@ -2909,7 +2909,7 @@ reentry:
                 // clone closure if the environment is not shared
                 // note: we save closure to stack early in case the code below wants to capture it by value
                 Closure* ncl =
-                    (kcl->env == cl->env) ? kcl : luaF_newLclosure(L, kcl->nupvalues, cl->env, FFlag::LuauCIProto ? getproto(kcl) : kcl->l.p);
+                    (kcl->l.env == cl->l.env) ? kcl : luaF_newLclosure(L, kcl->nupvalues, cl->l.env, FFlag::LuauCIProto ? getproto(kcl) : kcl->l.p);
                 setclvalue(L, ra, ncl);
 
                 // this loop does three things:
@@ -2932,7 +2932,7 @@ reentry:
                     // lazily clone the closure and update the upvalues
                     if (ncl == kcl && kcl->preload == 0)
                     {
-                        ncl = luaF_newLclosure(L, kcl->nupvalues, cl->env, FFlag::LuauCIProto ? getproto(kcl) : kcl->l.p);
+                        ncl = luaF_newLclosure(L, kcl->nupvalues, cl->l.env, FFlag::LuauCIProto ? getproto(kcl) : kcl->l.p);
                         setclvalue(L, ra, ncl);
 
                         ui = -1; // restart the loop to fill all upvalues
@@ -3038,7 +3038,7 @@ reentry:
                 luau_FastFunction f = luauF_table[bfid];
                 LUAU_ASSERT(f);
 
-                if (cl->env->safeenv)
+                if (cl->l.env->safeenv)
                 {
                     VM_PROTECT_PC(); // f may fail due to OOM
 
@@ -3153,7 +3153,7 @@ reentry:
                 luau_FastFunction f = luauF_table[bfid];
                 LUAU_ASSERT(f);
 
-                if (cl->env->safeenv)
+                if (cl->l.env->safeenv)
                 {
                     VM_PROTECT_PC(); // f may fail due to OOM
 
@@ -3203,7 +3203,7 @@ reentry:
                 luau_FastFunction f = luauF_table[bfid];
                 LUAU_ASSERT(f);
 
-                if (cl->env->safeenv)
+                if (cl->l.env->safeenv)
                 {
                     VM_PROTECT_PC(); // f may fail due to OOM
 
@@ -3253,7 +3253,7 @@ reentry:
                 luau_FastFunction f = luauF_table[bfid];
                 LUAU_ASSERT(f);
 
-                if (cl->env->safeenv)
+                if (cl->l.env->safeenv)
                 {
                     VM_PROTECT_PC(); // f may fail due to OOM
 
@@ -3304,7 +3304,7 @@ reentry:
                 luau_FastFunction f = luauF_table[bfid];
                 LUAU_ASSERT(f);
 
-                if (cl->env->safeenv)
+                if (cl->l.env->safeenv)
                 {
                     VM_PROTECT_PC(); // f may fail due to OOM
 
