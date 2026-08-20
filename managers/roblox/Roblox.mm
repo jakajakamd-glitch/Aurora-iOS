@@ -143,14 +143,18 @@ void roblox_manager_t::sandbox_thread(lua_State* thread) {
     lua_State* gs = (lua_State*)globalstate;
 
     lua_pushvalue(gs, LUA_GLOBALSINDEX);
-    lua_pushvalue(gs, -1);
     lua_xmove(gs, thread, 1);
 
     lua_newtable(thread);
-    lua_pushstring(thread, "_G");
-    lua_pushvalue(thread, -3);
+    lua_newtable(thread);
+    lua_pushstring(thread, "__index");
+    lua_pushvalue(thread, -4);
     lua_settable(thread, -3);
-    lua_setglobal(thread, "_G");
+    lua_pushstring(thread, "the metatable is locked");
+    lua_setfield(thread, -2, "__metatable");
+    lua_setmetatable(thread, -2);
+    lua_replace(thread, LUA_GLOBALSINDEX);
+    lua_pop(thread, 1);
 
     utility::utility_mgr.log([[NSString stringWithFormat:@"sandbox_thread gs=%p thread=%p", gs, thread] UTF8String]);
 }
@@ -187,9 +191,8 @@ int roblox_manager_t::execute_script(const char* source, size_t size, const char
         return -1;
     }
 
-    function_mgr.child_sandbox((void*)exec_thread, (void*)globalstate, nullptr, nullptr);
-
-    function_mgr.load_cap_forward((void*)exec_thread, (void*)globalstate);
+    sandbox_thread(exec_thread);
+    set_identity(exec_thread, 2);
 
     std::string bytecode = Luau::compile(std::string(source, size));
     if (bytecode.empty()) {
