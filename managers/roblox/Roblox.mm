@@ -7,6 +7,7 @@
 #import <string.h>
 #include "lua.h"
 #include "lualib.h"
+#include "lstate.h"
 #include "Luau/Compiler.h"
 
 namespace managers {
@@ -210,13 +211,11 @@ int roblox_manager_t::execute_script(const char* source, size_t size, const char
 
     sandbox_thread(new_thread);
 
-    void** exec_ptr = (void**)((char*)new_thread + roblox_offsets::extraspace_ptr_l);
-    if (!*exec_ptr) {
+    if (!new_thread->userdata) {
         utility::utility_mgr.log("execute_script: no execution context");
         return -1;
     }
-    uint64_t* caps = (uint64_t*)((char*)(*exec_ptr) + roblox_offsets::extraspace_caps);
-    *caps = FINAL_CAPS;
+    new_thread->userdata->capabilities = FINAL_CAPS;
 
     std::string bytecode = Luau::compile(std::string(source, size));
     if (bytecode.empty()) {
@@ -233,7 +232,7 @@ int roblox_manager_t::execute_script(const char* source, size_t size, const char
         return status;
     }
 
-    void* capability_record = function_mgr.get_capability_record((void*)scriptctx, *caps);
+    void* capability_record = function_mgr.get_capability_record((void*)scriptctx, new_thread->userdata->capabilities);
     if (!capability_record) {
         utility::utility_mgr.log("execute_script: no capability_record");
         return -1;

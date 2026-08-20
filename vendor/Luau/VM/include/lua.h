@@ -35,7 +35,8 @@ struct RobloxExtraSpace
 
     char padding[ 0x18 ];                           // +0x00
     void* shared_identity;                          // +0x18 (pointer to shared struct, identity at +0x10)
-    char _pad_20[0x20];                             // +0x20..0x3f
+    char _pad_20[0x18];                             // +0x20..0x37
+    uint64_t capabilities;                          // +0x38 (bitmask: identity_caps | owner_caps | fallback_caps)
     char _pad_40[0x48];                             // +0x40..0x87 (saved identity, script ptr, actor ptr)
     char _pad_88[0x58];                             // +0x88..0xDF (thread info, etc.)
 };
