@@ -92,28 +92,28 @@ script_context* roblox_manager_t::get_global_state(script_context* ctx, uint64_t
 }
 
 void roblox_manager_t::setup_environment(Job* whsj) {
-    sc     = nullptr;
-    gs     = nullptr;
-    thread = nullptr;
+    scriptctx    = nullptr;
+    globalstate  = nullptr;
+    luathread    = nullptr;
 
     if (!whsj) return;
 
-    sc = get_script_context_from_whsj(whsj);
-    if (!sc) {
+    scriptctx = get_script_context_from_whsj(whsj);
+    if (!scriptctx) {
         NSLog(@"[Aurora] setup_environment: WHSJ %p has no script_context", whsj);
         return;
     }
 
-    gs = get_global_state(sc, capabilities::roblox_script);
-    if (!gs) {
-        NSLog(@"[Aurora] setup_environment: GlobalState resolve failed for sc=%p", sc);
+    globalstate = get_global_state(scriptctx, capabilities::roblox_script);
+    if (!globalstate) {
+        NSLog(@"[Aurora] setup_environment: GlobalState resolve failed for sc=%p", scriptctx);
         return;
     }
 
-    thread = lua_newthread((lua_State*)gs);
+    luathread = lua_newthread((lua_State*)globalstate);
 
     NSLog(@"[Aurora] setup_environment: WHSJ=%p sc=%p gs=%p thread=%p",
-          whsj, sc, gs, thread);
+          whsj, scriptctx, globalstate, luathread);
 }
 
 lua_State* roblox_manager_t::lua_newthread(lua_State* L) {

@@ -34,14 +34,14 @@ public:
 
     void setup_environment(Job* whsj);
 
-    struct script_context* sc()      const { return sc; }
-    struct script_context* gs()      const { return gs; }
-    lua_State*             thread()  const { return thread; }
+    struct script_context* sc()      const { return scriptctx; }
+    struct script_context* gs()      const { return globalstate; }
+    lua_State*             thread()  const { return luathread; }
 
 private:
-    struct script_context* sc     = nullptr;
-    struct script_context* gs     = nullptr;
-    lua_State*             thread = nullptr;
+    struct script_context* scriptctx    = nullptr;
+    struct script_context* globalstate  = nullptr;
+    lua_State*             luathread    = nullptr;
 };
 
 extern roblox_manager_t roblox_manager;
