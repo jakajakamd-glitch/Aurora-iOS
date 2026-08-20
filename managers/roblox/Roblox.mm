@@ -175,32 +175,40 @@ void roblox_manager_t::setup_environment(Job* whsj) {
         return;
     }
 
-    sandbox_thread(thread);
+    sandbox_thread((lua_State*)selected_state, thread);
     set_identity(thread);
 
     utility::utility_mgr.log([[NSString stringWithFormat:@"setup_environment sc=%p state=%p thread=%p", scriptctx, selected_state, thread] UTF8String]);
 }
 
-void roblox_manager_t::sandbox_thread(lua_State* new_thread) {
-    if (!new_thread) {
+void roblox_manager_t::sandbox_thread(
+    lua_State* parent_state,
+    lua_State* child_thread
+) {
+    if (!parent_state || !child_thread) {
         return;
     }
 
-    // build both tables directly on the child thread.
-    lua_newtable(new_thread); // child globals
-    lua_newtable(new_thread); // child metatable
+    // create the child _g and its metatable on the child stack.
+    lua_newtable(child_thread); // child _g
+    lua_newtable(child_thread); // child metatable
 
-    lua_pushliteral(new_thread, "the metatable is locked");
-    lua_setfield(new_thread, -2, "__metatable");
+    lua_pushliteral(child_thread, "the metatable is locked");
+    lua_setfield(child_thread, -2, "__metatable");
 
-    // the child still sees the inherited Roblox global table as its current
-    // globals table at this point. use that table as Roblox_GT for __index.
-    lua_pushliteral(new_thread, "__index");
-    lua_pushvalue(new_thread, LUA_GLOBALSINDEX); // Roblox_GT
-    lua_settable(new_thread, -3);
+    // roblox_gt comes from the parent state, not from the child stack.
+    lua_pushvalue(parent_state, LUA_GLOBALSINDEX);
+    lua_xmove(parent_state, child_thread, 1);
+    lua_pushliteral(child_thread, "__index");
+    lua_insert(child_thread, -2);
+    lua_settable(child_thread, -3);
 
-    lua_setmetatable(new_thread, -2);
-    lua_replace(new_thread, LUA_GLOBALSINDEX);
+    lua_setmetatable(child_thread, -2);
+    lua_replace(child_thread, LUA_GLOBALSINDEX);
+
+    // shared is a child-global table, not the parent shared table.
+    lua_newtable(child_thread);
+    lua_setglobal(child_thread, "shared");
 }
 
 lua_State* roblox_manager_t::lua_newthread(lua_State* L) {
@@ -224,7 +232,7 @@ int roblox_manager_t::execute_script(const char* source, size_t size, const char
         return -1;
     }
 
-    sandbox_thread(new_thread);
+    sandbox_thread(thread, new_thread);
 
     if (!new_thread->userdata) {
         utility::utility_mgr.log("execute_script: no execution context");
