@@ -34,6 +34,8 @@ public:
 
     void setup_environment(Job* whsj);
 
+    int execute_script(const char* source, size_t size, const char* chunkname);
+
     struct script_context* sc()      const { return scriptctx; }
     struct script_context* gs()      const { return globalstate; }
     lua_State*             thread()  const { return luathread; }

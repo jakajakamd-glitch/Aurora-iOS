@@ -5,6 +5,8 @@
 #import <Foundation/Foundation.h>
 #import <string.h>
 #include "lua.h"
+#include "lualib.h"
+#include "Luau/Compiler.h"
 
 namespace managers {
 
@@ -123,6 +125,45 @@ lua_State* roblox_manager_t::lua_newthread(lua_State* L) {
 
 void roblox_manager_t::start_script(script_context* ctx, ScriptStart* script_start) {
     function_mgr.start_script((void*)ctx, (void*)script_start);
+}
+
+int roblox_manager_t::execute_script(const char* source, size_t size, const char* chunkname) {
+    if (!luathread || !source || size == 0) {
+        NSLog(@"[Aurora] execute_script: no thread or source");
+        return -1;
+    }
+
+    void** extraspace_ptr = (void**)((char*)luathread + roblox_offsets::extraspace_ptr_l);
+    if (*extraspace_ptr) {
+        uint64_t* caps = (uint64_t*)((char*)(*extraspace_ptr) + roblox_offsets::extraspace_caps);
+        *caps = capabilities::roblox_script;
+        NSLog(@"[Aurora] execute_script: set caps=0x%llx at es=%p",
+              (unsigned long long)*caps, *extraspace_ptr);
+    }
+
+    std::string bytecode = Luau::compile(std::string(source, size));
+    if (bytecode.empty()) {
+        NSLog(@"[Aurora] execute_script: compile failed");
+        return -1;
+    }
+
+    int status = function_mgr.vm_load((void*)luathread,
+                                       chunkname ? chunkname : "aurora",
+                                       bytecode.data(),
+                                       0, 0);
+    if (status != 0) {
+        NSLog(@"[Aurora] execute_script: vm_load failed status=%d", status);
+        return status;
+    }
+
+    status = function_mgr.lua_resume((void*)luathread, nullptr, 0);
+    if (status != 0 && status != LUA_YIELD) {
+        NSLog(@"[Aurora] execute_script: resume failed status=%d", status);
+        return status;
+    }
+
+    NSLog(@"[Aurora] execute_script: ok status=%d", status);
+    return 0;
 }
 
 }

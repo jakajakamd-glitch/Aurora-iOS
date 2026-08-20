@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <string.h>
 #include <climits>
+#include <stdlib.h>
 
 LUAU_FASTFLAG(LuauIntegerType2)
 LUAU_FASTFLAG(DebugLuauUserDefinedClasses)

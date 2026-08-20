@@ -8,6 +8,8 @@ function_mgr_type function_mgr;
 namespace {
 typedef void* (*getGlobalState_t)(void*);
 typedef void  (*startScript_t)(void*, void*);
+typedef int   (*vmLoad_t)(void*, const char*, const char*, int, int);
+typedef int   (*luaResume_t)(void*, void*, int);
 }
 
 void function_mgr_type::start(uintptr_t base) {
@@ -30,6 +32,18 @@ void function_mgr_type::start_script(void* ctx, void* script_start) {
     if (base_ == 0) return;
     auto fn = (startScript_t)(base_ + startScript_offset);
     fn(ctx, script_start);
+}
+
+int function_mgr_type::vm_load(void* L, const char* name, const char* data, int mode, int flags) {
+    if (base_ == 0 || !L || !data) return -1;
+    auto fn = (vmLoad_t)(base_ + vmLoad_offset);
+    return fn(L, name, data, mode, flags);
+}
+
+int function_mgr_type::lua_resume(void* L, void* from, int nargs) {
+    if (base_ == 0 || !L) return -1;
+    auto fn = (luaResume_t)(base_ + luaResume_offset);
+    return fn(L, from, nargs);
 }
 
 }

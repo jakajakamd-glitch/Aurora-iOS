@@ -78,7 +78,27 @@ Aurora_FILES = Aurora.mm \
         vendor/Luau/VM/src/lvmutils.cpp \
         vendor/Luau/Common/src/BytecodeWire.cpp \
         vendor/Luau/Common/src/StringUtils.cpp \
-        vendor/Luau/Common/src/TimeTrace.cpp
+        vendor/Luau/Common/src/TimeTrace.cpp \
+        vendor/Luau/Compiler/src/BuiltinFolding.cpp \
+        vendor/Luau/Compiler/src/Builtins.cpp \
+        vendor/Luau/Compiler/src/Compiler.cpp \
+        vendor/Luau/Compiler/src/ConstantFolding.cpp \
+        vendor/Luau/Compiler/src/CostModel.cpp \
+        vendor/Luau/Compiler/src/TableShape.cpp \
+        vendor/Luau/Compiler/src/Types.cpp \
+        vendor/Luau/Compiler/src/ValueTracking.cpp \
+        vendor/Luau/Compiler/src/lcode.cpp \
+        vendor/Luau/Ast/src/Allocator.cpp \
+        vendor/Luau/Ast/src/Ast.cpp \
+        vendor/Luau/Ast/src/Confusables.cpp \
+        vendor/Luau/Ast/src/Cst.cpp \
+        vendor/Luau/Ast/src/Lexer.cpp \
+        vendor/Luau/Ast/src/Location.cpp \
+        vendor/Luau/Ast/src/Parser.cpp \
+        vendor/Luau/Ast/src/PrettyPrinter.cpp \
+        vendor/Luau/Bytecode/src/BytecodeBuilder.cpp \
+        vendor/Luau/Bytecode/src/BytecodeGraph.cpp \
+        vendor/Luau/Bytecode/src/Sccp.cpp
 Aurora_CFLAGS = -fobjc-arc -fvisibility=hidden -DDOBBY_LOGGING_DISABLE -DBUILD_WITH_TRAMPOLINE_ASM \
         -I$(THEOS_PROJECT_DIR) \
         -I$(THEOS_PROJECT_DIR)/managers/core \
@@ -98,7 +118,10 @@ Aurora_CFLAGS = -fobjc-arc -fvisibility=hidden -DDOBBY_LOGGING_DISABLE -DBUILD_W
         -I$(THEOS_PROJECT_DIR)/vendor/Luau/VM/include \
         -I$(THEOS_PROJECT_DIR)/vendor/Luau/VM/src \
         -I$(THEOS_PROJECT_DIR)/vendor/Luau/Common/include \
-        -I$(THEOS_PROJECT_DIR)/vendor/Luau/Common/include/Luau
-Aurora_CCFLAGS = -std=c++17 -Wno-reorder-ctor -Wno-sometimes-uninitialized -Wno-unused-variable -Wno-unused-function -Wno-macro-redefined -Wno-logical-op-parentheses -I$(THEOS_PROJECT_DIR) -I$(THEOS_PROJECT_DIR)/managers/core -I$(THEOS_PROJECT_DIR)/managers/hooks -I$(THEOS_PROJECT_DIR)/managers/functions -I$(THEOS_PROJECT_DIR)/managers/roblox -I$(THEOS_PROJECT_DIR)/offsets -I$(THEOS_PROJECT_DIR)/vendor/Dobby -I$(THEOS_PROJECT_DIR)/vendor/Dobby/include -I$(THEOS_PROJECT_DIR)/vendor/Dobby/source -I$(THEOS_PROJECT_DIR)/vendor/Dobby/source/dobby -I$(THEOS_PROJECT_DIR)/vendor/Dobby/external -I$(THEOS_PROJECT_DIR)/vendor/Dobby/external/logging -I$(THEOS_PROJECT_DIR)/vendor/Dobby/builtin-plugin -I$(THEOS_PROJECT_DIR)/vendor/Dobby/builtin-plugin/SymbolResolver -I$(THEOS_PROJECT_DIR)/vendor/Dobby/source/Backend/UserMode -I$(THEOS_PROJECT_DIR)/vendor/Luau/VM/include -I$(THEOS_PROJECT_DIR)/vendor/Luau/VM/src -I$(THEOS_PROJECT_DIR)/vendor/Luau/Common/include -I$(THEOS_PROJECT_DIR)/vendor/Luau/Common/include/Luau
+        -I$(THEOS_PROJECT_DIR)/vendor/Luau/Common/include/Luau \
+        -I$(THEOS_PROJECT_DIR)/vendor/Luau/Compiler/include \
+        -I$(THEOS_PROJECT_DIR)/vendor/Luau/Ast/include \
+        -I$(THEOS_PROJECT_DIR)/vendor/Luau/Bytecode/include
+Aurora_CCFLAGS = -std=c++17 -Wno-reorder-ctor -Wno-sometimes-uninitialized -Wno-unused-variable -Wno-unused-function -Wno-macro-redefined -Wno-logical-op-parentheses -Wno-missing-braces -I$(THEOS_PROJECT_DIR) -I$(THEOS_PROJECT_DIR)/managers/core -I$(THEOS_PROJECT_DIR)/managers/hooks -I$(THEOS_PROJECT_DIR)/managers/functions -I$(THEOS_PROJECT_DIR)/managers/roblox -I$(THEOS_PROJECT_DIR)/offsets -I$(THEOS_PROJECT_DIR)/vendor/Dobby -I$(THEOS_PROJECT_DIR)/vendor/Dobby/include -I$(THEOS_PROJECT_DIR)/vendor/Dobby/source -I$(THEOS_PROJECT_DIR)/vendor/Dobby/source/dobby -I$(THEOS_PROJECT_DIR)/vendor/Dobby/external -I$(THEOS_PROJECT_DIR)/vendor/Dobby/external/logging -I$(THEOS_PROJECT_DIR)/vendor/Dobby/builtin-plugin -I$(THEOS_PROJECT_DIR)/vendor/Dobby/builtin-plugin/SymbolResolver -I$(THEOS_PROJECT_DIR)/vendor/Dobby/source/Backend/UserMode -I$(THEOS_PROJECT_DIR)/vendor/Luau/VM/include -I$(THEOS_PROJECT_DIR)/vendor/Luau/VM/src -I$(THEOS_PROJECT_DIR)/vendor/Luau/Common/include -I$(THEOS_PROJECT_DIR)/vendor/Luau/Common/include/Luau -I$(THEOS_PROJECT_DIR)/vendor/Luau/Compiler/include -I$(THEOS_PROJECT_DIR)/vendor/Luau/Ast/include -I$(THEOS_PROJECT_DIR)/vendor/Luau/Bytecode/include
 Aurora_FRAMEWORKS = Foundation
 include $(THEOS)/makefiles/library.mk

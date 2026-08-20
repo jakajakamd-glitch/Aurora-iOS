@@ -4,6 +4,7 @@
 #include "Luau/Compiler.h"
 
 #include <string.h>
+#include <stdlib.h>
 
 char* luau_compile(const char* source, size_t size, lua_CompileOptions* options, size_t* outsize)
 {
