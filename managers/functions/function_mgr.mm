@@ -12,7 +12,7 @@ typedef void  (*startScript_t)(void*, void*);
 typedef int   (*vmLoad_t)(void*, const char*, const char*, int, int);
 typedef int   (*luaResume_t)(void*, void*, int);
 typedef void  (*luauExecute_t)(void*);
-typedef void* (*getCapabilityRecord_t)(void*, uint64_t);
+typedef void* (*getCapabilityTable_t)(void*, uint64_t);
 }
 
 void function_mgr_type::start(uintptr_t base) {
@@ -56,9 +56,9 @@ void function_mgr_type::luau_execute(void* L) {
     fn(L);
 }
 
-void* function_mgr_type::get_capability_record(void* scriptctx, uint64_t caps) {
+void* function_mgr_type::get_capability_table(void* scriptctx, uint64_t caps) {
     if (base_ == 0 || !scriptctx) return nullptr;
-    auto fn = (getCapabilityRecord_t)(base_ + getCapabilityRecord_offset);
+    auto fn = (getCapabilityTable_t)(base_ + getCapabilityTable_offset);
     return fn(scriptctx, caps);
 }
 

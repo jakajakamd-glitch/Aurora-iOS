@@ -35,14 +35,14 @@ struct lua_closure_view {
     proto_view* proto;
 };
 
-void set_one_proto_caps(proto_view* proto, void* capability_record) {
+void set_one_proto_caps(proto_view* proto, void* capability_table) {
     if (proto) {
-        proto->capabilities = capability_record;
+        proto->capabilities = capability_table;
     }
 }
 
-void set_proto_caps(lua_State* l, int closure_index, void* capability_record) {
-    if (!l || !capability_record || lua_type(l, closure_index) != LUA_TFUNCTION) {
+void set_proto_caps(lua_State* l, int closure_index, void* capability_table) {
+    if (!l || !capability_table || lua_type(l, closure_index) != LUA_TFUNCTION) {
         return;
     }
 
@@ -59,10 +59,10 @@ void set_proto_caps(lua_State* l, int closure_index, void* capability_record) {
         return;
     }
 
-    set_one_proto_caps(root, capability_record);
+    set_one_proto_caps(root, capability_table);
 
     for (uint32_t i = 0; i < root->child_proto_count; ++i) {
-        set_one_proto_caps(root->child_protos[i], capability_record);
+        set_one_proto_caps(root->child_protos[i], capability_table);
     }
 }
 
@@ -258,14 +258,14 @@ int roblox_manager_t::execute_script(const char* source, size_t size, const char
         return status;
     }
 
-    void* capability_record = function_mgr.get_capability_record((void*)scriptctx, new_thread->userdata->capabilities);
-    if (!capability_record) {
-        utility::utility_mgr.log("execute_script: no capability_record");
+    void* capability_table = function_mgr.get_capability_table((void*)scriptctx, new_thread->userdata->capabilities);
+    if (!capability_table) {
+        utility::utility_mgr.log("execute_script: no capability_table");
         return -1;
     }
 
-    set_proto_caps(new_thread, -1, capability_record);
-    utility::utility_mgr.log([[NSString stringWithFormat:@"execute_script: proto caps set record=%p", capability_record] UTF8String]);
+    set_proto_caps(new_thread, -1, capability_table);
+    utility::utility_mgr.log([[NSString stringWithFormat:@"execute_script: proto caps set table=%p", capability_table] UTF8String]);
 
     status = function_mgr.lua_resume((void*)new_thread, nullptr, 0);
     if (status != 0 && status != LUA_YIELD) {

@@ -73,8 +73,8 @@ std::int32_t getsenv(lua_State* L) {
     if (!found && roblox_manager.scriptctx) {
         uintptr_t context = (uintptr_t)roblox_manager.scriptctx;
         for (size_t state_index = 0; state_index < 2 && !foreign; ++state_index) {
-            uintptr_t record = context + 0x130 + 0x18 + state_index * 0x210;
-            uintptr_t handle = record + 0x1e8;
+            uintptr_t state_entry = context + 0x130 + 0x18 + state_index * 0x210;
+            uintptr_t handle = state_entry + 0x1e8;
             uint64_t low = (uint32_t)handle - *(uint32_t*)handle;
             uint64_t high = (uint32_t)(handle >> 32) - *(uint32_t*)(handle + 4);
             lua_State* alternate = (lua_State*)(low | (high << 32));
@@ -168,19 +168,19 @@ std::int32_t loadstring(lua_State* L) {
     }
 
     if (roblox_manager.scriptctx && L->userdata) {
-        void* capability_record = function_mgr.get_capability_record(
+        void* capability_table = function_mgr.get_capability_table(
             (void*)roblox_manager.scriptctx,
             L->userdata->capabilities
         );
-        if (capability_record && lua_type(L, -1) == LUA_TFUNCTION) {
+        if (capability_table && lua_type(L, -1) == LUA_TFUNCTION) {
             const void* object = lua_topointer(L, -1);
             closure_view* closure = (closure_view*)object;
             proto_view* root = closure ? closure->proto : nullptr;
             if (root && (root->child_protos || root->child_proto_count == 0)) {
-                root->capabilities = capability_record;
+                root->capabilities = capability_table;
                 for (uint32_t i = 0; i < root->child_proto_count; ++i) {
                     if (root->child_protos[i]) {
-                        root->child_protos[i]->capabilities = capability_record;
+                        root->child_protos[i]->capabilities = capability_table;
                     }
                 }
             }
