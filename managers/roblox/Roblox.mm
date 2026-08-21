@@ -45,7 +45,25 @@ void set_proto_caps_impl(lua_State* l, int closure_index, void* capability_table
     if (!l || !capability_table || lua_type(l, closure_index) != LUA_TFUNCTION) {
         return;
     }
-    function_mgr.set_proto_caps((void*)l, closure_index, capability_table);
+
+    const void* object = lua_topointer(l, closure_index);
+    if (!object) {
+        return;
+    }
+
+    lua_closure_view* closure = const_cast<lua_closure_view*>(
+        reinterpret_cast<const lua_closure_view*>(object)
+    );
+    proto_view* root = closure->proto;
+    if (!root || !root->child_protos && root->child_proto_count != 0) {
+        return;
+    }
+
+    set_one_proto_caps(root, capability_table);
+
+    for (uint32_t i = 0; i < root->child_proto_count; ++i) {
+        set_one_proto_caps(root->child_protos[i], capability_table);
+    }
 }
 
 void set_identity_impl(lua_State* l, uint32_t identity) {
@@ -64,10 +82,6 @@ void set_identity_impl(lua_State* l, uint32_t identity) {
     if (l->userdata->shared_identity) {
         *reinterpret_cast<uint64_t*>(reinterpret_cast<uint8_t*>(l->userdata->shared_identity) + 0x10) = identity;
     }
-}
-
-int native_loadstring_bridge(lua_State* L) {
-    return function_mgr.load_string((void*)L);
 }
 
 void (*orig_jobStart)(Job*) = nullptr;
@@ -229,7 +243,7 @@ void roblox_manager_t::sandbox_thread(
 
 lua_State* roblox_manager_t::lua_newthread(lua_State* L) {
     if (!L) return nullptr;
-    return (lua_State*)function_mgr.new_thread((void*)L);
+    return ::lua_newthread(L);
 }
 
 void roblox_manager_t::start_script(script_context* ctx, ScriptStart* script_start) {
@@ -264,28 +278,39 @@ int roblox_manager_t::execute_script(const char* source,
     set_identity(new_thread, 8);
     environment_manager.load_environment(new_thread);
 
-    int base = lua_gettop(new_thread);
-    lua_pushlstring(new_thread, source, size);
-    lua_pushstring(new_thread, chunkname ? chunkname : OBF("=aurora"));
-    lua_pushcclosurek(new_thread, native_loadstring_bridge, OBF("=aurora_load"), 0, nullptr);
-    lua_insert(new_thread, base + 1);
-
-    int status = lua_pcall(new_thread, 2, 1, 0);
-    if (status != 0) {
-        utility::utility_mgr.log([[NSString stringWithFormat:OBF_NS("execute_script: native load failed status=%d flags=%u"), status, flags] UTF8String]);
-        lua_settop(new_thread, base);
-        lua_pop(parent, 1);
-        return status;
-    }
-
-    if (lua_type(new_thread, -1) != LUA_TFUNCTION) {
-        utility::utility_mgr.log(OBF("execute_script: native load returned non-function"));
-        lua_settop(new_thread, base);
+    environment::thread_script* script = environment::thread_script::create(new_thread, source, size);
+    if (!script) {
+        utility::utility_mgr.log(OBF("execute_script: thread_script allocation failed"));
         lua_pop(parent, 1);
         return -1;
     }
 
-    utility::utility_mgr.log([[NSString stringWithFormat:OBF_NS("execute_script: native load ok flags=%u"), flags] UTF8String]);
+    std::string bytecode;
+    bool made = script->make(bytecode);
+    delete script;
+    if (!made || bytecode.empty()) {
+        utility::utility_mgr.log(OBF("execute_script: thread_script make failed"));
+        lua_pop(parent, 1);
+        return -1;
+    }
+
+    int status = function_mgr.vm_load((void*)new_thread,
+                                       chunkname ? chunkname : OBF("=aurora"),
+                                       bytecode.data(),
+                                       0, 0);
+    if (status != 0) {
+        utility::utility_mgr.log([[NSString stringWithFormat:OBF_NS("execute_script: vm_load failed status=%d flags=%u"), status, flags] UTF8String]);
+        return status;
+    }
+
+    void* capability_table = function_mgr.get_capability_table((void*)context, new_thread->userdata->capabilities);
+    if (!capability_table) {
+        utility::utility_mgr.log(OBF("execute_script: no capability_table"));
+        return -1;
+    }
+
+    set_proto_caps(new_thread, -1, capability_table);
+    utility::utility_mgr.log([[NSString stringWithFormat:OBF_NS("execute_script: proto caps set table=%p flags=%u"), capability_table, flags] UTF8String]);
 
     status = function_mgr.lua_resume((void*)new_thread, nullptr, 0);
     if (status != 0 && status != LUA_YIELD) {

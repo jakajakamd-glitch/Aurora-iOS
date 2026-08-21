@@ -184,8 +184,24 @@ std::int32_t getgenv(lua_State* L) {
 }
 
 std::int32_t loadstring(lua_State* L) {
-    luaL_checklstring(L, 1, nullptr);
-    return function_mgr.load_string((void*)L);
+    size_t source_size = 0;
+    const char* source = luaL_checklstring(L, 1, &source_size);
+    const char* chunkname = luaL_optstring(L, 2, OBF("=loadstring"));
+    int status = function_mgr.vm_load((void*)L, chunkname, source, 0, 0);
+    if (status != 0) {
+        if (!lua_isstring(L, -1)) {
+            lua_pushfstring(L, OBF("loadstring failed with status %d"), status);
+        }
+        lua_pushnil(L);
+        lua_insert(L, -2);
+        return 2;
+    }
+
+    if (roblox_manager.scriptctx && L->userdata) {
+        void* capability_table = function_mgr.get_capability_table((void*)roblox_manager.scriptctx, L->userdata->capabilities);
+        set_proto_caps(L, capability_table);
+    }
+    return 1;
 }
 
 std::int32_t run_on_actor(lua_State* L) {
