@@ -337,13 +337,13 @@ void hook_mgr_type::hook(uintptr_t absolute_address, void *replacement, void **b
     memcpy(&original_insn, (void*)target, 4);
 
     uint32_t relocated = 0;
-    size_t written = relocate_arm64(&relocated, &original_insn, 1, target, (uintptr_t)relay + 16);
+    size_t written = relocate_arm64(&relocated, &original_insn, 1, target, (uintptr_t)relay + 20);
     if (written != 4) {
         NSLog(OBF_NS("[Aurora] hook_mgr: relocate failed target=%p"), (void*)target);
         return;
     }
 
-    uint32_t b_back = encode_b((uintptr_t)relay + 20, target + 4);
+    uint32_t b_back = encode_b((uintptr_t)relay + 24, target + 4);
     if (b_back == 0) {
         NSLog(OBF_NS("[Aurora] hook_mgr: B-back out of range target=%p relay=%p"),
               (void*)target, relay);
@@ -351,7 +351,7 @@ void hook_mgr_type::hook(uintptr_t absolute_address, void *replacement, void **b
     }
 
     uint32_t veneer[8];
-    veneer[0] = 0x58000050u;
+    veneer[0] = 0x58000090u;
     veneer[1] = 0xD61F0200u;
     veneer[2] = 0;
     veneer[3] = (uint32_t)(fake & 0xFFFFFFFFu);

@@ -19,6 +19,7 @@ public:
     static constexpr uintptr_t luaResume_offset    = 0x04370cf0;
     static constexpr uintptr_t luauExecute_offset  = 0x4389148;
     static constexpr uintptr_t getCapabilityTable_offset = 0x01766d5c;
+    static constexpr uintptr_t gameLoaded_offset = 0x0494004;
 
     void* get_global_state(void* scriptctx);
     void  start_script(void* ctx, void* script_start);

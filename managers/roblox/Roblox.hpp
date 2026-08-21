@@ -13,6 +13,11 @@ struct script_context;
 struct ScriptStart;
 struct Job;
 
+enum execution_flags : uint32_t {
+    execution_normal = 0,
+    execution_actor = 1u << 0,
+};
+
 class roblox_manager_t {
 public:
     void start();
@@ -31,7 +36,12 @@ public:
     void set_identity(lua_State* l, uint32_t identity);
     void set_proto_caps(lua_State* l, int closure_index, void* capability_table);
 
-    int execute_script(const char* source, size_t size, const char* chunkname);
+    int execute_script(const char* source,
+                       size_t size,
+                       const char* chunkname,
+                       lua_State* parent_state = nullptr,
+                       struct script_context* context_override = nullptr,
+                       uint32_t flags = execution_normal);
 
     struct script_context* scriptctx      = nullptr;
     void*                  selected_state = nullptr;
