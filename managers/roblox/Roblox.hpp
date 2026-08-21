@@ -28,6 +28,8 @@ public:
 
     void setup_environment(Job* whsj);
     void sandbox_thread(lua_State* parent_state, lua_State* child_thread);
+    void set_identity(lua_State* l, uint32_t identity);
+    void set_proto_caps(lua_State* l, int closure_index, void* capability_table);
 
     int execute_script(const char* source, size_t size, const char* chunkname);
 

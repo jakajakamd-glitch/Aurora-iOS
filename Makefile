@@ -4,6 +4,7 @@ include $(THEOS)/makefiles/common.mk
 LIBRARY_NAME = Aurora
 Aurora_FILES = Aurora.mm \
         managers/core/managers.mm \
+        managers/core/core.mm \
         managers/hooks/hook_mgr.mm \
         managers/functions/function_mgr.mm \
         managers/roblox/Roblox.mm \

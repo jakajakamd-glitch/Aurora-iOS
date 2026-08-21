@@ -41,7 +41,7 @@ void set_one_proto_caps(proto_view* proto, void* capability_table) {
     }
 }
 
-void set_proto_caps(lua_State* l, int closure_index, void* capability_table) {
+void set_proto_caps_impl(lua_State* l, int closure_index, void* capability_table) {
     if (!l || !capability_table || lua_type(l, closure_index) != LUA_TFUNCTION) {
         return;
     }
@@ -66,7 +66,7 @@ void set_proto_caps(lua_State* l, int closure_index, void* capability_table) {
     }
 }
 
-void set_identity(lua_State* l, uint32_t identity) {
+void set_identity_impl(lua_State* l, uint32_t identity) {
     if (!l || !l->userdata || identity == 0 || identity > 13) {
         return;
     }
@@ -108,6 +108,14 @@ void start_script_hook(script_context *ctx, ScriptStart *script_start) {
     utility::utility_mgr.log([[NSString stringWithFormat:OBF_NS("startScript this=%p scriptStart=%p state=%p"), ctx, script_start, gs] UTF8String]);
     orig_startScript(ctx, script_start);
 }
+}
+
+void roblox_manager_t::set_identity(lua_State* l, uint32_t identity) {
+    set_identity_impl(l, identity);
+}
+
+void roblox_manager_t::set_proto_caps(lua_State* l, int closure_index, void* capability_table) {
+    set_proto_caps_impl(l, closure_index, capability_table);
 }
 
 void roblox_manager_t::start() {
