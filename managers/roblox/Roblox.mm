@@ -18,10 +18,8 @@ roblox_manager_t roblox_manager;
 
 namespace {
 
-constexpr uint32_t identity = 8;
-constexpr uint64_t identity_caps = 0x200000000000003fULL;
 constexpr uint64_t fallback_caps = 0x003fffffffffff00ULL;
-constexpr uint64_t final_caps = identity_caps | fallback_caps;
+constexpr uintptr_t identity_table_offset = 0x53d4618;
 
 struct proto_view {
     uint8_t unknown_00[0x20];
@@ -68,12 +66,22 @@ void set_proto_caps(lua_State* l, int closure_index, void* capability_record) {
     }
 }
 
-void set_identity(lua_State* l) {
-    if (!l || !l->userdata) {
+void set_identity(lua_State* l, uint32_t identity) {
+    if (!l || !l->userdata || identity == 0 || identity > 13) {
         return;
     }
 
-    l->userdata->capabilities = final_caps;
+    uint64_t* identity_table = reinterpret_cast<uint64_t*>(function_mgr.resolve(identity_table_offset));
+    if (!identity_table) {
+        return;
+    }
+
+    uint64_t raw_capabilities = identity_table[identity - 1];
+    l->userdata->capabilities = raw_capabilities | fallback_caps;
+
+    if (l->userdata->shared_identity) {
+        *reinterpret_cast<uint64_t*>(reinterpret_cast<uint8_t*>(l->userdata->shared_identity) + 0x10) = identity;
+    }
 }
 
 void (*orig_jobStart)(Job*) = nullptr;
@@ -177,7 +185,7 @@ void roblox_manager_t::setup_environment(Job* whsj) {
     }
 
     sandbox_thread((lua_State*)selected_state, thread);
-    set_identity(thread);
+    set_identity(thread, 8);
 
     utility::utility_mgr.log([[NSString stringWithFormat:@"setup_environment sc=%p state=%p thread=%p", scriptctx, selected_state, thread] UTF8String]);
 }
@@ -232,7 +240,7 @@ int roblox_manager_t::execute_script(const char* source, size_t size, const char
         utility::utility_mgr.log("execute_script: no execution context");
         return -1;
     }
-    set_identity(new_thread);
+    set_identity(new_thread, 8);
     environment_manager.load_environment(new_thread);
 
     std::string bytecode = Luau::compile(std::string(source, size));
