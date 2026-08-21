@@ -68,27 +68,12 @@ lua_State* actor_global_state(lua_State* L) {
     return *reinterpret_cast<lua_State**>(reinterpret_cast<uint8_t*>(actor) + actor_global_state_offset);
 }
 
-}
-
-std::int32_t getsenv(lua_State* L) {
-    int type = lua_type(L, 1);
-    if (type != LUA_TUSERDATA && type != LUA_TLIGHTUSERDATA) {
-        luaL_typeerrorL(L, 1, OBF("Script"));
-        return 0;
+lua_State* find_script_thread(lua_State* state, void* script) {
+    if (!state || !state->global || !script) {
+        return nullptr;
     }
 
-    void* script = const_cast<void*>(lua_topointer(L, 1));
-    if (!script || !L->global) {
-        lua_pushstring(L, OBF("script is not currently running"));
-        lua_error(L);
-        return 0;
-    }
-
-    lua_State* current = lua_mainthread(L);
-    lua_State* found = nullptr;
-    bool foreign = false;
-
-    for (lua_Page* page = current->global->allgcopages; page && !found; page = luaM_getnextpage(page)) {
+    for (lua_Page* page = state->global->allgcopages; page; page = luaM_getnextpage(page)) {
         char* start = nullptr;
         char* end = nullptr;
         int busy_blocks = 0;
@@ -100,20 +85,39 @@ std::int32_t getsenv(lua_State* L) {
                 continue;
             }
             lua_State* candidate = &object->th;
-            if (candidate->global != current->global || !candidate->userdata) {
+            if (candidate->global != state->global || !candidate->userdata) {
                 continue;
             }
-            void* active_script = *(void**)((uintptr_t)candidate->userdata + 0x40);
-            if (active_script == script) {
-                found = candidate;
-                break;
+            if (*(void**)((uintptr_t)candidate->userdata + 0x40) == script) {
+                return candidate;
             }
         }
     }
+    return nullptr;
+}
 
+}
+
+std::int32_t getsenv(lua_State* L) {
+    int type = lua_type(L, 1);
+    if (type != LUA_TUSERDATA && type != LUA_TLIGHTUSERDATA) {
+        luaL_typeerrorL(L, 1, OBF("Script"));
+        return 0;
+    }
+
+    void* script = const_cast<void*>(lua_topointer(L, 1));
+    lua_State* current = lua_mainthread(L);
+    if (!script || !current || !current->global) {
+        lua_pushstring(L, OBF("script is not currently running"));
+        lua_error(L);
+        return 0;
+    }
+
+    lua_State* found = find_script_thread(current, script);
+    bool foreign = false;
     if (!found && roblox_manager.scriptctx) {
         uintptr_t context = (uintptr_t)roblox_manager.scriptctx;
-        for (size_t state_index = 0; state_index < 2 && !foreign; ++state_index) {
+        for (size_t state_index = 0; state_index < 2 && !found; ++state_index) {
             uintptr_t state_entry = context + 0x130 + 0x18 + state_index * 0x210;
             uintptr_t handle = state_entry + 0x1e8;
             uint64_t low = (uint32_t)handle - *(uint32_t*)handle;
@@ -122,28 +126,8 @@ std::int32_t getsenv(lua_State* L) {
             if (!alternate || !alternate->global || alternate->global == current->global) {
                 continue;
             }
-
-            for (lua_Page* page = alternate->global->allgcopages; page && !foreign; page = luaM_getnextpage(page)) {
-                char* start = nullptr;
-                char* end = nullptr;
-                int busy_blocks = 0;
-                int block_size = 0;
-                luaM_getpagewalkinfo(page, &start, &end, &busy_blocks, &block_size);
-                for (char* position = start; position != end; position += block_size) {
-                    GCObject* object = (GCObject*)position;
-                    if (object->gch.tt != LUA_TTHREAD) {
-                        continue;
-                    }
-                    lua_State* candidate = &object->th;
-                    if (candidate->global != alternate->global || !candidate->userdata) {
-                        continue;
-                    }
-                    void* active_script = *(void**)((uintptr_t)candidate->userdata + 0x40);
-                    if (active_script == script) {
-                        foreign = true;
-                        break;
-                    }
-                }
+            if (find_script_thread(alternate, script)) {
+                foreign = true;
             }
         }
     }
