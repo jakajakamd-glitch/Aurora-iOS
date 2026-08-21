@@ -23,7 +23,7 @@ void job_start_hook(Job *job) {
         orig_jobStart(job);
         return;
     }
-    NSLog(@"[Aurora] JobStart name=\"%s\" job=%p", name, job);
+    NSLog(OBF_NS("[Aurora] JobStart name=\")%s\OBF(" job=%p"), name, job);
     if (roblox_manager_t::is_whsj(job)) {
         roblox_manager.setup_environment(job);
     }
@@ -33,7 +33,7 @@ void job_start_hook(Job *job) {
 void job_stop_hook(Job *job) {
     const char *name = roblox_manager_t::get_job_name(job);
     if (name) {
-        NSLog(@"[Aurora] JobStop name=\"%s\" job=%p", name, job);
+        NSLog(OBF_NS("[Aurora] JobStop name=\")%s\OBF(" job=%p"), name, job);
     }
     orig_jobStop(job);
 }
@@ -43,14 +43,14 @@ void start_script_hook(script_context *ctx, ScriptStart *script_start) {
     if (!gs) {
         gs = roblox_manager.select_global_state_handle(ctx, DEFAULT_CLASSIFICATION);
     }
-    NSLog(@"[Aurora] startScript this=%p scriptStart=%p GlobalState=%p",
+    NSLog(OBF_NS("[Aurora] startScript this=%p scriptStart=%p GlobalState=%p"),
           ctx, script_start, gs);
     orig_startScript(ctx, script_start);
 }
 }
 
 void roblox_manager_t::start() {
-    NSLog(@"[Aurora] roblox_manager_t::start");
+    NSLog(OBF_NS("[Aurora] roblox_manager_t::start"));
     install_hooks();
 }
 
@@ -74,7 +74,7 @@ void roblox_manager_t::install_hooks() {
                       (void*)start_script_hook,
                       (void**)&orig_startScript);
     }
-    NSLog(@"[Aurora] roblox_manager_t: hooks installed (jobStart=%p jobStop=%p startScript=%p)",
+    NSLog(OBF_NS("[Aurora] roblox_manager_t: hooks installed (jobStart=%p jobStop=%p startScript=%p)"),
           jobstart, jobstop, startscript);
 }
 
@@ -122,19 +122,19 @@ void roblox_manager_t::setup_environment(Job* whsj) {
 
     sc_ = get_script_context_from_whsj(whsj);
     if (!sc_) {
-        NSLog(@"[Aurora] setup_environment: WHSJ %p has no script_context", whsj);
+        NSLog(OBF_NS("[Aurora] setup_environment: WHSJ %p has no script_context"), whsj);
         return;
     }
 
     gs_ = select_global_state_handle(sc_, DEFAULT_CLASSIFICATION);
     if (!gs_) {
-        NSLog(@"[Aurora] setup_environment: GlobalState resolve failed for sc=%p", sc_);
+        NSLog(OBF_NS("[Aurora] setup_environment: GlobalState resolve failed for sc=%p"), sc_);
         return;
     }
 
     thread_ = lua_newthread((lua_State*)gs_);
 
-    NSLog(@"[Aurora] setup_environment: WHSJ=%p sc=%p gs=%p thread=%p",
+    NSLog(OBF_NS("[Aurora] setup_environment: WHSJ=%p sc=%p gs=%p thread=%p"),
           whsj, sc_, gs_, thread_);
 }
 

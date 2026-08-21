@@ -15,7 +15,7 @@ void start_all(uintptr_t base) {
     hook_mgr.start();
     roblox_manager.start();
     utility::utility_mgr.start();
-    utility::utility_mgr.log([[NSString stringWithFormat:@"all managers started base=%p", (void*)base] UTF8String]);
+    utility::utility_mgr.log([[NSString stringWithFormat:OBF_NS("all managers started base=%p"), (void*)base] UTF8String]);
 }
 
 uintptr_t current_base() { return g_base; }

@@ -23,7 +23,7 @@ static const struct mach_header *find_image_header(NSString *image_basename) {
 __attribute__((constructor)) static void aurora_initialize(void) {
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
         for (NSUInteger attempt = 0; attempt < 100; ++attempt) {
-            const struct mach_header *header = find_image_header(@"RobloxLib");
+            const struct mach_header *header = find_image_header(OBF_NS("RobloxLib"));
             if (header != nullptr) {
                 uintptr_t base = reinterpret_cast<uintptr_t>(header);
                 managers::start_all(base);

@@ -17,8 +17,8 @@ typedef void* (*getCapabilityTable_t)(void*, uint64_t);
 
 void function_mgr_type::start(uintptr_t base) {
     base_ = base;
-    NSLog(@"[Aurora] function_mgr::start base=%p", (void*)base_);
-    utility::utility_mgr.log([[NSString stringWithFormat:@"function_mgr::start base=%p", (void*)base_] UTF8String]);
+    NSLog(OBF_NS("[Aurora] function_mgr::start base=%p"), (void*)base_);
+    utility::utility_mgr.log([[NSString stringWithFormat:OBF_NS("function_mgr::start base=%p"), (void*)base_] UTF8String]);
 }
 
 void* function_mgr_type::resolve(uintptr_t offset) {

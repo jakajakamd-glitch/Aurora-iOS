@@ -93,7 +93,7 @@ void job_start_hook(Job *job) {
         orig_jobStart(job);
         return;
     }
-    utility::utility_mgr.log([[NSString stringWithFormat:@"JobStart \"%s\" %p", name, job] UTF8String]);
+    utility::utility_mgr.log([[NSString stringWithFormat:OBF_NS("JobStart \\\"%s\\\" %p"), name, job] UTF8String]);
     if (roblox_manager_t::is_whsj(job)) {
         roblox_manager.setup_environment(job);
     }
@@ -105,13 +105,13 @@ void start_script_hook(script_context *ctx, ScriptStart *script_start) {
     if (!gs) {
         gs = roblox_manager.get_global_state(ctx);
     }
-    utility::utility_mgr.log([[NSString stringWithFormat:@"startScript this=%p scriptStart=%p state=%p", ctx, script_start, gs] UTF8String]);
+    utility::utility_mgr.log([[NSString stringWithFormat:OBF_NS("startScript this=%p scriptStart=%p state=%p"), ctx, script_start, gs] UTF8String]);
     orig_startScript(ctx, script_start);
 }
 }
 
 void roblox_manager_t::start() {
-    utility::utility_mgr.log("roblox_manager_t::start");
+    utility::utility_mgr.log(OBF("roblox_manager_t::start"));
     install_hooks();
 }
 
@@ -129,7 +129,7 @@ void roblox_manager_t::install_hooks() {
                       (void*)start_script_hook,
                       (void**)&orig_startScript);
     }
-    utility::utility_mgr.log([[NSString stringWithFormat:@"hooks installed jobStart=%p startScript=%p", jobstart, startscript] UTF8String]);
+    utility::utility_mgr.log([[NSString stringWithFormat:OBF_NS("hooks installed jobStart=%p startScript=%p"), jobstart, startscript] UTF8String]);
 }
 
 const char* roblox_manager_t::get_job_name(Job* job) {
@@ -168,26 +168,26 @@ void roblox_manager_t::setup_environment(Job* whsj) {
 
     scriptctx = get_script_context_from_whsj(whsj);
     if (!scriptctx) {
-        utility::utility_mgr.log("setup_environment: no script_context");
+        utility::utility_mgr.log(OBF("setup_environment: no script_context"));
         return;
     }
 
     selected_state = get_global_state(scriptctx);
     if (!selected_state) {
-        utility::utility_mgr.log("setup_environment: no selected_state");
+        utility::utility_mgr.log(OBF("setup_environment: no selected_state"));
         return;
     }
 
     thread = lua_newthread((lua_State*)selected_state);
     if (!thread) {
-        utility::utility_mgr.log("setup_environment: lua_newthread failed");
+        utility::utility_mgr.log(OBF("setup_environment: lua_newthread failed"));
         return;
     }
 
     sandbox_thread((lua_State*)selected_state, thread);
     set_identity(thread, 8);
 
-    utility::utility_mgr.log([[NSString stringWithFormat:@"setup_environment sc=%p state=%p thread=%p", scriptctx, selected_state, thread] UTF8String]);
+    utility::utility_mgr.log([[NSString stringWithFormat:OBF_NS("setup_environment sc=%p state=%p thread=%p"), scriptctx, selected_state, thread] UTF8String]);
 }
 
 void roblox_manager_t::sandbox_thread(
@@ -200,17 +200,17 @@ void roblox_manager_t::sandbox_thread(
 
     lua_newtable(child_thread);
     lua_newtable(child_thread);
-    lua_pushliteral(child_thread, "the metatable is locked");
-    lua_setfield(child_thread, -2, "__metatable");
+    lua_pushstring(child_thread, OBF("the metatable is locked"));
+    lua_setfield(child_thread, -2, OBF("__metatable"));
     lua_pushvalue(parent_state, LUA_GLOBALSINDEX);
     lua_xmove(parent_state, child_thread, 1);
-    lua_pushliteral(child_thread, "__index");
+    lua_pushstring(child_thread, OBF("__index"));
     lua_insert(child_thread, -2);
     lua_settable(child_thread, -3);
     lua_setmetatable(child_thread, -2);
     lua_replace(child_thread, LUA_GLOBALSINDEX);
     lua_newtable(child_thread);
-    lua_setglobal(child_thread, "shared");
+    lua_setglobal(child_thread, OBF("shared"));
 }
 
 lua_State* roblox_manager_t::lua_newthread(lua_State* L) {
@@ -224,20 +224,20 @@ void roblox_manager_t::start_script(script_context* ctx, ScriptStart* script_sta
 
 int roblox_manager_t::execute_script(const char* source, size_t size, const char* chunkname) {
     if (!thread || !source || size == 0 || !scriptctx) {
-        utility::utility_mgr.log("execute_script: no thread or source");
+        utility::utility_mgr.log(OBF("execute_script: no thread or source"));
         return -1;
     }
 
     lua_State* new_thread = lua_newthread(thread);
     if (!new_thread) {
-        utility::utility_mgr.log("execute_script: lua_newthread failed");
+        utility::utility_mgr.log(OBF("execute_script: lua_newthread failed"));
         return -1;
     }
 
     sandbox_thread(thread, new_thread);
 
     if (!new_thread->userdata) {
-        utility::utility_mgr.log("execute_script: no execution context");
+        utility::utility_mgr.log(OBF("execute_script: no execution context"));
         return -1;
     }
     set_identity(new_thread, 8);
@@ -245,35 +245,35 @@ int roblox_manager_t::execute_script(const char* source, size_t size, const char
 
     std::string bytecode = Luau::compile(std::string(source, size));
     if (bytecode.empty()) {
-        utility::utility_mgr.log("execute_script: compile failed");
+        utility::utility_mgr.log(OBF("execute_script: compile failed"));
         return -1;
     }
 
     int status = function_mgr.vm_load((void*)new_thread,
-                                       chunkname ? chunkname : "aurora",
+                                       chunkname ? chunkname : OBF("aurora"),
                                        bytecode.data(),
                                        0, 0);
     if (status != 0) {
-        utility::utility_mgr.log([[NSString stringWithFormat:@"execute_script: vm_load failed status=%d", status] UTF8String]);
+        utility::utility_mgr.log([[NSString stringWithFormat:OBF_NS("execute_script: vm_load failed status=%d"), status] UTF8String]);
         return status;
     }
 
     void* capability_table = function_mgr.get_capability_table((void*)scriptctx, new_thread->userdata->capabilities);
     if (!capability_table) {
-        utility::utility_mgr.log("execute_script: no capability_table");
+        utility::utility_mgr.log(OBF("execute_script: no capability_table"));
         return -1;
     }
 
     set_proto_caps(new_thread, -1, capability_table);
-    utility::utility_mgr.log([[NSString stringWithFormat:@"execute_script: proto caps set table=%p", capability_table] UTF8String]);
+    utility::utility_mgr.log([[NSString stringWithFormat:OBF_NS("execute_script: proto caps set table=%p"), capability_table] UTF8String]);
 
     status = function_mgr.lua_resume((void*)new_thread, nullptr, 0);
     if (status != 0 && status != LUA_YIELD) {
-        utility::utility_mgr.log([[NSString stringWithFormat:@"execute_script: resume failed status=%d", status] UTF8String]);
+        utility::utility_mgr.log([[NSString stringWithFormat:OBF_NS("execute_script: resume failed status=%d"), status] UTF8String]);
         return status;
     }
 
-    utility::utility_mgr.log([[NSString stringWithFormat:@"execute_script: ok status=%d", status] UTF8String]);
+    utility::utility_mgr.log([[NSString stringWithFormat:OBF_NS("execute_script: ok status=%d"), status] UTF8String]);
     return 0;
 }
 

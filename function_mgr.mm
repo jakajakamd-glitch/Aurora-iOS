@@ -12,7 +12,7 @@ typedef void  (*startScript_t)(void*, void*);
 
 void function_mgr_type::start(uintptr_t base) {
     base_ = base;
-    NSLog(@"[Aurora] function_mgr::start base=%p", (void*)base_);
+    NSLog(OBF_NS("[Aurora] function_mgr::start base=%p"), (void*)base_);
 }
 
 void* function_mgr_type::resolve(uintptr_t offset) {

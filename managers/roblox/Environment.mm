@@ -33,13 +33,14 @@ struct closure_view {
 std::int32_t getsenv(lua_State* L) {
     int type = lua_type(L, 1);
     if (type != LUA_TUSERDATA && type != LUA_TLIGHTUSERDATA) {
-        luaL_typeerrorL(L, 1, "Script");
+        luaL_typeerrorL(L, 1, OBF("Script"));
         return 0;
     }
 
     void* script = const_cast<void*>(lua_topointer(L, 1));
     if (!script || !L->global) {
-        luaL_error(L, "script is not currently running");
+        lua_pushstring(L, OBF("script is not currently running"));
+        lua_error(L);
         return 0;
     }
 
@@ -112,7 +113,8 @@ std::int32_t getsenv(lua_State* L) {
         return 1;
     }
     if (!found) {
-        luaL_error(L, "script is not currently running");
+        lua_pushstring(L, OBF("script is not currently running"));
+        lua_error(L);
         return 0;
     }
 
@@ -156,11 +158,11 @@ std::int32_t getgenv(lua_State* L) {
 std::int32_t loadstring(lua_State* L) {
     size_t source_size = 0;
     const char* source = luaL_checklstring(L, 1, &source_size);
-    const char* chunkname = luaL_optstring(L, 2, "=loadstring");
+    const char* chunkname = luaL_optstring(L, 2, OBF("=loadstring"));
     int status = function_mgr.vm_load((void*)L, chunkname, source, 0, 0);
     if (status != 0) {
         if (!lua_isstring(L, -1)) {
-            lua_pushfstring(L, "loadstring failed with status %d", status);
+            lua_pushfstring(L, OBF("loadstring failed with status %d"), status);
         }
         lua_pushnil(L);
         lua_insert(L, -2);
@@ -196,14 +198,14 @@ void environment_manager_t::load_environment(lua_State* thread) {
         return;
     }
 
-    lua_pushcclosurek(thread, getsenv, "getsenv", 0, nullptr);
-    lua_setglobal(thread, "getsenv");
-    lua_pushcclosurek(thread, getrenv, "getrenv", 0, nullptr);
-    lua_setglobal(thread, "getrenv");
-    lua_pushcclosurek(thread, getgenv, "getgenv", 0, nullptr);
-    lua_setglobal(thread, "getgenv");
-    lua_pushcclosurek(thread, loadstring, "loadstring", 0, nullptr);
-    lua_setglobal(thread, "loadstring");
+    lua_pushcclosurek(thread, getsenv, OBF("getsenv"), 0, nullptr);
+    lua_setglobal(thread, OBF("getsenv"));
+    lua_pushcclosurek(thread, getrenv, OBF("getrenv"), 0, nullptr);
+    lua_setglobal(thread, OBF("getrenv"));
+    lua_pushcclosurek(thread, getgenv, OBF("getgenv"), 0, nullptr);
+    lua_setglobal(thread, OBF("getgenv"));
+    lua_pushcclosurek(thread, loadstring, OBF("loadstring"), 0, nullptr);
+    lua_setglobal(thread, OBF("loadstring"));
 }
 
 }

@@ -269,7 +269,7 @@ static bool patch_atomic(uintptr_t addr, uint32_t new_insn, uint32_t* old_insn_o
 
     kern_return_t kr = mprotect((void *)lo, span, PROT_READ | PROT_WRITE | PROT_EXEC);
     if (kr != 0) {
-        NSLog(@"[Aurora] patch_atomic: mprotect RWX failed errno=%d", errno);
+        NSLog(OBF_NS("[Aurora] patch_atomic: mprotect RWX failed errno=%d"), errno);
         return false;
     }
 
@@ -288,7 +288,7 @@ static bool patch_atomic(uintptr_t addr, uint32_t new_insn, uint32_t* old_insn_o
 
     kr = mprotect((void *)lo, span, PROT_READ | PROT_EXEC);
     if (kr != 0) {
-        NSLog(@"[Aurora] patch_atomic: RX restore failed errno=%d — ROLLING BACK", errno);
+        NSLog(OBF_NS("[Aurora] patch_atomic: RX restore failed errno=%d — ROLLING BACK"), errno);
         thread_act_t self_thread2 = mach_thread_self();
         suspend_other_threads(self_thread2);
         *(volatile uint32_t*)addr = *old_insn_out;
@@ -304,13 +304,13 @@ static bool patch_atomic(uintptr_t addr, uint32_t new_insn, uint32_t* old_insn_o
 }
 
 void hook_mgr_type::start() {
-    NSLog(@"[Aurora] hook_mgr::start");
+    NSLog(OBF_NS("[Aurora] hook_mgr::start"));
 }
 
 void hook_mgr_type::hook(uintptr_t absolute_address, void *replacement, void **backup) {
     if (backup) *backup = nullptr;
     if (absolute_address == 0 || replacement == nullptr) {
-        NSLog(@"[Aurora] hook_mgr: refusing null input addr=%p repl=%p",
+        NSLog(OBF_NS("[Aurora] hook_mgr: refusing null input addr=%p repl=%p"),
               (void *)absolute_address, replacement);
         return;
     }
@@ -320,13 +320,13 @@ void hook_mgr_type::hook(uintptr_t absolute_address, void *replacement, void **b
 
     void *relay = alloc_relay_page(target);
     if (!relay) {
-        NSLog(@"[Aurora] hook_mgr: relay alloc failed target=%p", (void*)target);
+        NSLog(OBF_NS("[Aurora] hook_mgr: relay alloc failed target=%p"), (void*)target);
         return;
     }
 
     uint32_t b_to_relay = encode_b(target, (uintptr_t)relay);
     if (b_to_relay == 0) {
-        NSLog(@"[Aurora] hook_mgr: relay out of B-range target=%p relay=%p",
+        NSLog(OBF_NS("[Aurora] hook_mgr: relay out of B-range target=%p relay=%p"),
               (void*)target, relay);
         return;
     }
@@ -337,13 +337,13 @@ void hook_mgr_type::hook(uintptr_t absolute_address, void *replacement, void **b
     uint32_t relocated = 0;
     size_t written = relocate_arm64(&relocated, &original_insn, 1, target, (uintptr_t)relay + 16);
     if (written != 4) {
-        NSLog(@"[Aurora] hook_mgr: relocate failed target=%p", (void*)target);
+        NSLog(OBF_NS("[Aurora] hook_mgr: relocate failed target=%p"), (void*)target);
         return;
     }
 
     uint32_t b_back = encode_b((uintptr_t)relay + 20, target + 4);
     if (b_back == 0) {
-        NSLog(@"[Aurora] hook_mgr: B-back out of range target=%p relay=%p",
+        NSLog(OBF_NS("[Aurora] hook_mgr: B-back out of range target=%p relay=%p"),
               (void*)target, relay);
         return;
     }
@@ -363,14 +363,14 @@ void hook_mgr_type::hook(uintptr_t absolute_address, void *replacement, void **b
     kern_return_t kr = mprotect((void*)((uintptr_t)relay & ~(page_size() - 1)),
                                  page_size(), PROT_READ | PROT_EXEC);
     if (kr != 0) {
-        NSLog(@"[Aurora] hook_mgr: relay RX failed errno=%d", errno);
+        NSLog(OBF_NS("[Aurora] hook_mgr: relay RX failed errno=%d"), errno);
         return;
     }
     sys_icache_invalidate(relay, sizeof(veneer));
 
     uint32_t old = 0;
     if (!patch_atomic(target, b_to_relay, &old)) {
-        NSLog(@"[Aurora] hook_mgr: patch_atomic failed target=%p", (void*)target);
+        NSLog(OBF_NS("[Aurora] hook_mgr: patch_atomic failed target=%p"), (void*)target);
         return;
     }
 
@@ -379,7 +379,7 @@ void hook_mgr_type::hook(uintptr_t absolute_address, void *replacement, void **b
         *backup = tramp;
     }
 
-    NSLog(@"[Aurora] hook_mgr: hook ok target=%p repl=%p relay=%p tramp=%p",
+    NSLog(OBF_NS("[Aurora] hook_mgr: hook ok target=%p repl=%p relay=%p tramp=%p"),
           (void*)target, replacement, relay, backup ? *backup : nullptr);
 }
 

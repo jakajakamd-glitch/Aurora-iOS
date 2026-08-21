@@ -49,7 +49,7 @@
     self.logView = [[UITextView alloc] initWithFrame:CGRectMake(0, 0, 0, 0)];
     self.logView.backgroundColor = [UIColor colorWithRed:0 green:0 blue:0 alpha:0.9];
     self.logView.textColor = [UIColor greenColor];
-    self.logView.font = [UIFont fontWithName:@"Menlo" size:10];
+    self.logView.font = [UIFont fontWithName:OBF_NS("Menlo") size:10];
     self.logView.editable = NO;
     self.logView.hidden = YES;
     [self addSubview:self.logView];
@@ -99,7 +99,7 @@
     NSMutableString *text = [NSMutableString string];
     @synchronized (self.logs) {
         for (NSString *log in self.logs) {
-            [text appendFormat:@"%@\n", log];
+            [text appendFormat:OBF_NS("%@\n"), log];
         }
     }
     self.logView.text = text;
@@ -114,7 +114,7 @@
     NSString *timestamp = [NSDateFormatter localizedStringFromDate:[NSDate date]
                                                         dateStyle:NSDateFormatterNoStyle
                                                         timeStyle:NSDateFormatterMediumStyle];
-    NSString *entry = [NSString stringWithFormat:@"[%@] %@", timestamp, msg];
+    NSString *entry = [NSString stringWithFormat:OBF_NS("[%@] %@"), timestamp, msg];
     @synchronized (self.logs) {
         [self.logs addObject:entry];
         if (self.logs.count > 500) {
@@ -135,7 +135,7 @@ namespace utility {
 utility_mgr_type utility_mgr;
 
 void utility_mgr_type::start() {
-    NSLog(@"[Aurora] utility_mgr::start");
+    NSLog(OBF_NS("[Aurora] utility_mgr::start"));
     dispatch_async(dispatch_get_main_queue(), ^{
         UIWindow *window = nil;
         for (UIScene *scene in [UIApplication sharedApplication].connectedScenes) {
@@ -158,7 +158,7 @@ void utility_mgr_type::start() {
 }
 
 void utility_mgr_type::log(const char *msg) {
-    NSString *str = [NSString stringWithUTF8String:msg ? msg : "(null)"];
+    NSString *str = [NSString stringWithUTF8String:msg ? msg : OBF("(null)")];
     [[AuroraDebugView shared] log:str];
 }
 
