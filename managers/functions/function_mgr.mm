@@ -1,6 +1,7 @@
 #import "function_mgr.hpp"
 #import "../utility/utility_mgr.hpp"
 #import <Foundation/Foundation.h>
+#include <memory>
 
 namespace managers {
 
@@ -8,7 +9,10 @@ function_mgr_type function_mgr;
 
 namespace {
 typedef void* (*getGlobalState_t)(void*, void*, void*);
+typedef void* (*newThread_t)(void*);
+typedef int   (*loadString_t)(void*);
 typedef void  (*startScript_t)(void*, void*);
+typedef void  (*setProtoCaps_t)(void*, int, void*);
 typedef int   (*vmLoad_t)(void*, const char*, const char*, int, int);
 typedef int   (*luaResume_t)(void*, void*, int);
 typedef void  (*luauExecute_t)(void*);
@@ -28,8 +32,24 @@ void* function_mgr_type::resolve(uintptr_t offset) {
 
 void* function_mgr_type::get_global_state(void* scriptctx) {
     if (base_ == 0 || !scriptctx) return nullptr;
+
+    std::shared_ptr<void> first;
+    std::shared_ptr<void> second;
     auto fn = (getGlobalState_t)(base_ + getGlobalState_offset);
-    return fn(scriptctx, nullptr, nullptr);
+    void* state = fn(scriptctx, &first, &second);
+    return state;
+}
+
+void* function_mgr_type::new_thread(void* L) {
+    if (base_ == 0 || !L) return nullptr;
+    auto fn = (newThread_t)(base_ + newThread_offset);
+    return fn(L);
+}
+
+int function_mgr_type::load_string(void* L) {
+    if (base_ == 0 || !L) return 0;
+    auto fn = (loadString_t)(base_ + loadString_offset);
+    return fn(L);
 }
 
 void function_mgr_type::start_script(void* ctx, void* script_start) {
@@ -60,6 +80,12 @@ void* function_mgr_type::get_capability_table(void* scriptctx, uint64_t caps) {
     if (base_ == 0 || !scriptctx) return nullptr;
     auto fn = (getCapabilityTable_t)(base_ + getCapabilityTable_offset);
     return fn(scriptctx, caps);
+}
+
+void function_mgr_type::set_proto_caps(void* L, int index, void* capability_table) {
+    if (base_ == 0 || !L || !capability_table) return;
+    auto fn = (setProtoCaps_t)(base_ + setProtoCaps_offset);
+    fn(L, index, capability_table);
 }
 
 }

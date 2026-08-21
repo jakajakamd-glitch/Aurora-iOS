@@ -196,6 +196,9 @@ void hook_mgr_type::start() {
 
 void hook_mgr_type::hook(uintptr_t absolute_address, void *replacement, void **backup) {
     if (backup) *backup = nullptr;
+    NSLog(OBF_NS("[Aurora] hook_mgr: inline hooks disabled; no executable relay or page patching"));
+    utility::utility_mgr.log(OBF("hook_mgr: inline hooks disabled"));
+    return;
     if (absolute_address == 0 || replacement == nullptr) {
         NSLog(OBF_NS("[Aurora] hook_mgr: refusing null input addr=%p repl=%p"),
               (void*)absolute_address, replacement);
