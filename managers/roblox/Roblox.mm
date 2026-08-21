@@ -11,7 +11,6 @@
 #include "lualib.h"
 #include "lstate.h"
 #include "lapi.h"
-#include "Luau/Compiler.h"
 
 namespace managers {
 
@@ -279,9 +278,19 @@ int roblox_manager_t::execute_script(const char* source,
     set_identity(new_thread, 8);
     environment_manager.load_environment(new_thread);
 
-    std::string bytecode = Luau::compile(std::string(source, size));
-    if (bytecode.empty()) {
-        utility::utility_mgr.log(OBF("execute_script: compile failed"));
+    environment::thread_script* script = environment::thread_script::create(new_thread, source, size);
+    if (!script) {
+        utility::utility_mgr.log(OBF("execute_script: thread_script allocation failed"));
+        lua_pop(parent, 1);
+        return -1;
+    }
+
+    std::string bytecode;
+    bool made = script->make(bytecode);
+    delete script;
+    if (!made || bytecode.empty()) {
+        utility::utility_mgr.log(OBF("execute_script: thread_script make failed"));
+        lua_pop(parent, 1);
         return -1;
     }
 

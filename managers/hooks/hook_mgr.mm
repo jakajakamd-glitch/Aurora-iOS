@@ -4,7 +4,7 @@
 #import <mach/mach.h>
 #import <mach/mach_init.h>
 #import <mach/thread_act.h>
-#import <mach/mach_vm.h>
+#import <mach/vm_map.h>
 #import <mach-o/dyld.h>
 #import <sys/mman.h>
 #import <unistd.h>
@@ -223,9 +223,9 @@ void hook_mgr_type::hook(uintptr_t absolute_address, void *replacement, void **b
         return;
     }
 
-    kern_return_t kr = mach_vm_protect(mach_task_self(),
-                                       (mach_vm_address_t)pg_lo,
-                                       (mach_vm_size_t)ps,
+    kern_return_t kr = vm_protect(mach_task_self(),
+                                       (vm_address_t)pg_lo,
+                                       (vm_size_t)ps,
                                        FALSE,
                                        VM_PROT_READ | VM_PROT_WRITE | VM_PROT_COPY);
     if (kr != KERN_SUCCESS) {
@@ -238,8 +238,8 @@ void hook_mgr_type::hook(uintptr_t absolute_address, void *replacement, void **b
                                             kTrampSlots);
     if (!tramp_slot) {
         NSLog(OBF_NS("[Aurora] hook_mgr: no trampoline space in page target=%p"), (void*)target);
-        mach_vm_protect(mach_task_self(), (mach_vm_address_t)pg_lo,
-                        (mach_vm_size_t)ps, FALSE, VM_PROT_READ | VM_PROT_EXECUTE);
+        vm_protect(mach_task_self(), (vm_address_t)pg_lo,
+                        (vm_size_t)ps, FALSE, VM_PROT_READ | VM_PROT_EXECUTE);
         return;
     }
 
@@ -249,8 +249,8 @@ void hook_mgr_type::hook(uintptr_t absolute_address, void *replacement, void **b
                                           target, tramp_addr);
     if (tramp_written != kPatchBytes) {
         NSLog(OBF_NS("[Aurora] hook_mgr: relocate to tramp failed target=%p"), (void*)target);
-        mach_vm_protect(mach_task_self(), (mach_vm_address_t)pg_lo,
-                        (mach_vm_size_t)ps, FALSE, VM_PROT_READ | VM_PROT_EXECUTE);
+        vm_protect(mach_task_self(), (vm_address_t)pg_lo,
+                        (vm_size_t)ps, FALSE, VM_PROT_READ | VM_PROT_EXECUTE);
         return;
     }
 
@@ -258,8 +258,8 @@ void hook_mgr_type::hook(uintptr_t absolute_address, void *replacement, void **b
     if (b_back_off < -(1LL << 27) || b_back_off >= (1LL << 27)) {
         NSLog(OBF_NS("[Aurora] hook_mgr: B-back out of range target=%p tramp=%p"),
               (void*)target, (void*)tramp_addr);
-        mach_vm_protect(mach_task_self(), (mach_vm_address_t)pg_lo,
-                        (mach_vm_size_t)ps, FALSE, VM_PROT_READ | VM_PROT_EXECUTE);
+        vm_protect(mach_task_self(), (vm_address_t)pg_lo,
+                        (vm_size_t)ps, FALSE, VM_PROT_READ | VM_PROT_EXECUTE);
         return;
     }
     uint32_t b_back = 0x14000000u | (uint32_t)((b_back_off >> 2) & 0x03FFFFFFu);
@@ -283,9 +283,9 @@ void hook_mgr_type::hook(uintptr_t absolute_address, void *replacement, void **b
     resume_other_threads(self_thread);
     mach_port_deallocate(mach_task_self(), self_thread);
 
-    kr = mach_vm_protect(mach_task_self(),
-                         (mach_vm_address_t)pg_lo,
-                         (mach_vm_size_t)ps,
+    kr = vm_protect(mach_task_self(),
+                         (vm_address_t)pg_lo,
+                         (vm_size_t)ps,
                          FALSE,
                          VM_PROT_READ | VM_PROT_EXECUTE);
     if (kr != KERN_SUCCESS) {
