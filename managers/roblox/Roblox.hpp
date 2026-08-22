@@ -16,6 +16,8 @@ struct Job;
 enum execution_flags : uint32_t {
     execution_normal = 0,
     execution_actor = 1u << 0,
+    execution_loadstring = 1u << 1,
+    execution_hookmetamethod = 1u << 2,
 };
 
 class roblox_manager_t {

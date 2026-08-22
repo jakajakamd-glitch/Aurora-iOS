@@ -321,6 +321,11 @@ int roblox_manager_t::execute_script(const char* source,
     environment_manager.load_environment(new_thread);
     utility::utility_mgr.log([[NSString stringWithFormat:OBF_NS("execute_script: manual function ready table=%p flags=%u"), capability_table, flags] UTF8String]);
 
+    if (flags & execution_loadstring) {
+        lua_xmove(new_thread, parent, 1);
+        return 0;
+    }
+
     status = function_mgr.lua_resume((void*)new_thread, nullptr, 0);
     if (status != 0 && status != LUA_YIELD) {
         utility::utility_mgr.log([[NSString stringWithFormat:OBF_NS("execute_script: resume failed status=%d flags=%u"), status, flags] UTF8String]);

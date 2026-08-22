@@ -4,15 +4,13 @@
 
 namespace managers::core {
 
-static auto hookmetamethod_script = OBF(R"AURORA(local function getmetatable_for_hook(object)
+static auto hookmetamethod_script = OBF(R"AURORA(getgenv().hookmetamethod = function(object, metamethod_name, hook)
+    local metatable
     if getrawmetatable then
-        return getrawmetatable(object)
+        metatable = getrawmetatable(object)
+    else
+        metatable = getmetatable(object)
     end
-    return getmetatable(object)
-end
-
-function hookmetamethod(object, metamethod_name, hook)
-    local metatable = getmetatable_for_hook(object)
     if type(metatable) ~= "table" then
         error("object has no accessible metatable", 2)
     end

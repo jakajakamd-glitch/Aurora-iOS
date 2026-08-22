@@ -18,6 +18,7 @@
 #include "lfunc.h"
 #include "lgc.h"
 #include "startscript.hpp"
+#include "hookmetamethod.hpp"
 #include "Luau/Compiler.h"
 
 namespace managers::core {
@@ -194,7 +195,23 @@ std::int32_t getgenv(lua_State* L) {
 }
 
 std::int32_t loadstring(lua_State* L) {
-    return function_mgr.load_string((void*)L);
+    size_t source_size = 0;
+    const char* source = luaL_checklstring(L, 1, &source_size);
+    const char* chunkname = luaL_optstring(L, 2, OBF("=loadstring"));
+    int base = lua_gettop(L);
+    int status = roblox_manager.execute_script(source,
+                                                source_size,
+                                                chunkname,
+                                                L,
+                                                nullptr,
+                                                execution_loadstring);
+    if (status != 0) {
+        lua_settop(L, base);
+        lua_pushnil(L);
+        lua_pushfstring(L, OBF("loadstring failed with status %d"), status);
+        return 2;
+    }
+    return 1;
 }
 
 std::int32_t clonefunction(lua_State* L) {
@@ -527,6 +544,17 @@ void on_game_loaded(void* sender, void* data) {
     }
 
 ;
+    const char* hook_source = hookmetamethod_script;
+    int hook_status = roblox_manager.execute_script(hook_source,
+                                                     strlen(hook_source),
+                                                     OBF("=hookmetamethod"),
+                                                     nullptr,
+                                                     nullptr,
+                                                     execution_hookmetamethod);
+    if (hook_status != 0) {
+        utility::utility_mgr.log([[NSString stringWithFormat:OBF_NS("hookmetamethod execution failed status=%d sender=%p data=%p"), hook_status, sender, data] UTF8String]);
+    }
+
     const char* source = startup_script();
     int status = roblox_manager.execute_script(source,
                                                 strlen(source),
