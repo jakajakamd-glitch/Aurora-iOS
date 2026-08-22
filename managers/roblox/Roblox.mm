@@ -88,15 +88,15 @@ void set_identity_impl(lua_State* l, uint32_t identity) {
     }
 }
 
-void (*orig_jobStart)(Job*) = nullptr;
-void (*orig_startScript)(script_context*, ScriptStart*) = nullptr;
-void (*orig_gameLoaded)(void*, void*) = nullptr;
+bool job_start_hook_installed = false;
+bool start_script_hook_installed = false;
+bool game_loaded_hook_installed = false;
 
 void job_start_hook(Job *job) {
     const char *name = roblox_manager_t::get_job_name(job);
     if (!name) {
-        if (orig_jobStart) {
-            orig_jobStart(job);
+        if (job_start_hook_installed) {
+            reinterpret_cast<void (*)(Job*)>(aurora_job_start_trampoline)(job);
         }
         return;
     }
@@ -104,14 +104,14 @@ void job_start_hook(Job *job) {
     if (roblox_manager_t::is_whsj(job)) {
         roblox_manager.setup_environment(job);
     }
-    if (orig_jobStart) {
-        orig_jobStart(job);
+    if (job_start_hook_installed) {
+        reinterpret_cast<void (*)(Job*)>(aurora_job_start_trampoline)(job);
     }
 }
 
 void game_loaded_hook(void* sender, void* data) {
-    if (orig_gameLoaded) {
-        orig_gameLoaded(sender, data);
+    if (game_loaded_hook_installed) {
+        reinterpret_cast<void (*)(void*, void*)>(aurora_game_loaded_trampoline)(sender, data);
     }
     core::on_game_loaded(sender, data);
 }
@@ -122,8 +122,8 @@ void start_script_hook(script_context *ctx, ScriptStart *script_start) {
         gs = roblox_manager.get_global_state(ctx);
     }
     utility::utility_mgr.log([[NSString stringWithFormat:OBF_NS("startScript this=%p scriptStart=%p state=%p"), ctx, script_start, gs] UTF8String]);
-    if (orig_startScript) {
-        orig_startScript(ctx, script_start);
+    if (start_script_hook_installed) {
+        reinterpret_cast<void (*)(script_context*, ScriptStart*)>(aurora_start_script_trampoline)(ctx, script_start);
     }
 }
 }
@@ -146,20 +146,38 @@ void roblox_manager_t::install_hooks() {
     void *startscript = function_mgr.resolve(function_mgr_type::startScript_offset);
     void *game_loaded = function_mgr.resolve(function_mgr_type::gameLoaded_offset);
 
+    static const uint32_t job_start_prologue[4] = {
+        0xf44fbea9u, 0xfd7b01a9u, 0xfd430091u, 0xf30300aau
+    };
+    static const uint32_t start_script_prologue[4] = {
+        0xfc6fbaa9u, 0xfa6701a9u, 0xf85f02a9u, 0xf65703a9u
+    };
+    static const uint32_t game_loaded_prologue[4] = {
+        0xff4301d1u, 0xf65702a9u, 0xf44f03a9u, 0xfd7b04a9u
+    };
     if (jobstart) {
-        hook_mgr.hook(reinterpret_cast<uintptr_t>(jobstart),
-                      (void*)job_start_hook,
-                      (void**)&orig_jobStart);
+        job_start_hook_installed = hook_mgr.hook(reinterpret_cast<uintptr_t>(jobstart),
+                                                 (void*)job_start_hook,
+                                                 nullptr,
+                                                 (void*)aurora_job_start_trampoline,
+                                                 &aurora_job_start_return,
+                                                 job_start_prologue);
     }
     if (startscript) {
-        hook_mgr.hook(reinterpret_cast<uintptr_t>(startscript),
-                      (void*)start_script_hook,
-                      (void**)&orig_startScript);
+        start_script_hook_installed = hook_mgr.hook(reinterpret_cast<uintptr_t>(startscript),
+                                                    (void*)start_script_hook,
+                                                    nullptr,
+                                                    (void*)aurora_start_script_trampoline,
+                                                    &aurora_start_script_return,
+                                                    start_script_prologue);
     }
     if (game_loaded) {
-        hook_mgr.hook(reinterpret_cast<uintptr_t>(game_loaded),
-                      (void*)game_loaded_hook,
-                      (void**)&orig_gameLoaded);
+        game_loaded_hook_installed = hook_mgr.hook(reinterpret_cast<uintptr_t>(game_loaded),
+                                                   (void*)game_loaded_hook,
+                                                   nullptr,
+                                                   (void*)aurora_game_loaded_trampoline,
+                                                   &aurora_game_loaded_return,
+                                                   game_loaded_prologue);
     }
     utility::utility_mgr.log([[NSString stringWithFormat:OBF_NS("hooks installed jobStart=%p startScript=%p gameLoaded=%p"), jobstart, startscript, game_loaded] UTF8String]);
 }
