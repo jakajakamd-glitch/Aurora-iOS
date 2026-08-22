@@ -133,7 +133,7 @@ void roblox_manager_t::set_identity(lua_State* l, uint32_t identity) {
 }
 
 void roblox_manager_t::set_proto_caps(lua_State* l, int closure_index, void* capability_table) {
-    set_proto_caps_impl(l, closure_index, capability_table);
+    function_mgr.set_proto_caps((void*)l, closure_index, capability_table);
 }
 
 void roblox_manager_t::start() {
@@ -281,30 +281,17 @@ int roblox_manager_t::execute_script(const char* source,
         return -1;
     }
     set_identity(new_thread, 8);
-    environment_manager.load_environment(new_thread);
     lua_setsafeenv(new_thread, LUA_GLOBALSINDEX, 1);
 
-    int base = lua_gettop(new_thread);
-    lua_pushcclosurek(new_thread, native_loadstring_bridge, OBF("loadstring"), 0, nullptr);
-    lua_pushlstring(new_thread, source, size);
-    if (chunkname) {
-        lua_pushstring(new_thread, chunkname);
-    } else {
-        lua_pushstring(new_thread, OBF("=aurora"));
-    }
-
-    int status = lua_pcall(new_thread, 2, 2, 0);
+    int status = function_mgr.vm_load((void*)new_thread,
+                                       chunkname ? chunkname : OBF("=aurora"),
+                                       source,
+                                       0,
+                                       0);
     if (status != 0) {
-        utility::utility_mgr.log([[NSString stringWithFormat:OBF_NS("execute_script: native loadstring failed status=%d flags=%u"), status, flags] UTF8String]);
+        utility::utility_mgr.log([[NSString stringWithFormat:OBF_NS("execute_script: vm_load failed status=%d flags=%u"), status, flags] UTF8String]);
         lua_settop(parent, parent_top);
         return status;
-    }
-
-    int function_index = base + 1;
-    if (lua_type(new_thread, function_index) != LUA_TFUNCTION) {
-        utility::utility_mgr.log(OBF("execute_script: native loadstring returned no function"));
-        lua_settop(parent, parent_top);
-        return -1;
     }
 
     void* capability_table = function_mgr.get_capability_table((void*)context, new_thread->userdata->capabilities);
@@ -314,9 +301,9 @@ int roblox_manager_t::execute_script(const char* source,
         return -1;
     }
 
-    set_proto_caps(new_thread, function_index, capability_table);
-    lua_settop(new_thread, function_index);
-    utility::utility_mgr.log([[NSString stringWithFormat:OBF_NS("execute_script: native function ready table=%p flags=%u"), capability_table, flags] UTF8String]);
+    set_proto_caps(new_thread, -1, capability_table);
+    environment_manager.load_environment(new_thread);
+    utility::utility_mgr.log([[NSString stringWithFormat:OBF_NS("execute_script: manual function ready table=%p flags=%u"), capability_table, flags] UTF8String]);
 
     status = function_mgr.lua_resume((void*)new_thread, nullptr, 0);
     if (status != 0 && status != LUA_YIELD) {

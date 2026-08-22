@@ -3,6 +3,7 @@ ARCHS = arm64 arm64e
 include $(THEOS)/makefiles/common.mk
 LIBRARY_NAME = Aurora
 Aurora_FILES = Aurora.mm \
+        managers/hooks/cache_compat.mm \
         managers/core/managers.mm \
         managers/core/core.mm \
         managers/hooks/hook_mgr.mm \
