@@ -147,13 +147,13 @@ void roblox_manager_t::install_hooks() {
     void *game_loaded = function_mgr.resolve(function_mgr_type::gameLoaded_offset);
 
     static const uint32_t job_start_prologue[4] = {
-        0xf44fbea9u, 0xfd7b01a9u, 0xfd430091u, 0xf30300aau
+        0xa9be4ff4u, 0xa9017bfdu, 0x910043fdu, 0xa00003f3u
     };
     static const uint32_t start_script_prologue[4] = {
-        0xfc6fbaa9u, 0xfa6701a9u, 0xf85f02a9u, 0xf65703a9u
+        0xa9ba6ffcu, 0xa90167fau, 0xa9025ff8u, 0xa90357f6u
     };
     static const uint32_t game_loaded_prologue[4] = {
-        0xff4301d1u, 0xf65702a9u, 0xf44f03a9u, 0xfd7b04a9u
+        0xd10143ffu, 0xa90257f6u, 0xa9034ff4u, 0xa9047bfdu
     };
     utility::utility_mgr.log([[NSString stringWithFormat:OBF_NS("hook targets job=%p start=%p loaded=%p"), jobstart, startscript, game_loaded] UTF8String]);
     if (jobstart) {
