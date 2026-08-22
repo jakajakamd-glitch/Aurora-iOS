@@ -170,7 +170,9 @@ void utility_mgr_type::start() {
 
 void utility_mgr_type::log(const char *msg) {
     NSString *str = [NSString stringWithUTF8String:msg ? msg : OBF("(null)")];
-    [[AuroraDebugView shared] log:str];
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [[AuroraDebugView shared] log:str];
+    });
 }
 
 }

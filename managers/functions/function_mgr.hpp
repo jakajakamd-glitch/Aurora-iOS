@@ -10,7 +10,7 @@ public:
 
     void* resolve(uintptr_t offset);
 
-    static constexpr uintptr_t jobstart_offset    = 0x489eac8;
+    static constexpr uintptr_t jobstart_offset    = 0x489ea44;
     static constexpr uintptr_t jobstop_offset     = 0x489ebd4;
     static constexpr uintptr_t startScript_offset = 0x179b568;
     static constexpr uintptr_t executorToScriptContext_offset = 0x179c624;
