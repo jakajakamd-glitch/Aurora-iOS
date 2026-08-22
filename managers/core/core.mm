@@ -106,172 +106,9 @@ lua_State* find_script_thread(lua_State* state, void* script) {
 }
 
 
-static uint8_t hook_map_key;
 static uint8_t original_map_key;
 static uint8_t wrapper_map_key;
-static uint8_t instance_type_key;
 
-static void push_registry_map(lua_State* L, void* key) {
-    lua_rawgetp(L, LUA_REGISTRYINDEX, key);
-    if (lua_istable(L, -1)) {
-        return;
-    }
-    lua_pop(L, 1);
-    lua_newtable(L);
-    lua_pushvalue(L, -1);
-    lua_rawsetp(L, LUA_REGISTRYINDEX, key);
-}
-
-static bool push_registry_value(lua_State* L, void* key, const void* object) {
-    push_registry_map(L, key);
-    lua_rawgetptagged(L, -1, const_cast<void*>(object), 0);
-    lua_remove(L, -2);
-    return lua_type(L, -1) != LUA_TNIL;
-}
-
-static void store_registry_value(lua_State* L, void* key, const void* object, int value_index) {
-    int map_index = lua_gettop(L) + 1;
-    push_registry_map(L, key);
-    map_index = lua_gettop(L);
-    lua_pushvalue(L, value_index);
-    lua_rawsetptagged(L, map_index, const_cast<void*>(object), 0);
-    lua_remove(L, map_index);
-}
-
-static Closure* active_closure(lua_State* L) {
-    lua_Debug debug{};
-    int before = lua_gettop(L);
-    if (!lua_getinfo(L, 0, OBF("f"), &debug) || lua_gettop(L) != before + 1) {
-        lua_settop(L, before);
-        return nullptr;
-    }
-    Closure* closure = reinterpret_cast<Closure*>(const_cast<void*>(lua_topointer(L, -1)));
-    lua_pop(L, 1);
-    return closure;
-}
-
-static int forward_continuation(lua_State* L, int status) {
-    if (status != LUA_OK) {
-        lua_error(L);
-        return 0;
-    }
-    return lua_gettop(L);
-}
-
-static int hook_dispatch(lua_State* L) {
-    Closure* wrapper = active_closure(L);
-    if (!wrapper || !push_registry_value(L, &hook_map_key, wrapper)) {
-        luaL_error(L, OBF("hook target is unavailable"));
-        return 0;
-    }
-    lua_insert(L, 1);
-    return luaL_callyieldable(L, lua_gettop(L) - 1, LUA_MULTRET);
-}
-
-static int newcclosure_dispatch(lua_State* L) {
-    Closure* wrapper = active_closure(L);
-    if (!wrapper || !push_registry_value(L, &wrapper_map_key, wrapper)) {
-        luaL_error(L, OBF("newcclosure target is unavailable"));
-        return 0;
-    }
-    lua_insert(L, 1);
-    return luaL_callyieldable(L, lua_gettop(L) - 1, LUA_MULTRET);
-}
-
-static Closure* make_lua_forwarder(lua_State* L, int target_index) {
-    int base = lua_gettop(L);
-    lua_getfenv(L, target_index);
-    if (!lua_istable(L, -1)) {
-        lua_pop(L, 1);
-        lua_getglobal(L, OBF("_G"));
-    }
-    lua_pushcclosurek(L, hook_dispatch, OBF("__aurora_hook_dispatch"), 0, forward_continuation);
-    lua_setfield(L, -2, OBF("__aurora_hook_dispatch"));
-    lua_pop(L, 1);
-
-    static const char* source = OBF("return function(...) return __aurora_hook_dispatch(...) end");
-    std::string bytecode = Luau::compile(source);
-    int status = luau_load(L, OBF("=hookfunction"), bytecode.data(), bytecode.size(), 0);
-    if (status != 0 || lua_type(L, -1) != LUA_TFUNCTION) {
-        lua_settop(L, base);
-        return nullptr;
-    }
-    status = lua_pcall(L, 0, 1, 0);
-    if (status != 0 || lua_type(L, -1) != LUA_TFUNCTION) {
-        lua_settop(L, base);
-        return nullptr;
-    }
-    return reinterpret_cast<Closure*>(const_cast<void*>(lua_topointer(L, -1)));
-}
-
-static int hookfunction_impl(lua_State* L, int target_index, int hook_index) {
-    target_index = lua_absindex(L, target_index);
-    hook_index = lua_absindex(L, hook_index);
-    if (lua_type(L, target_index) != LUA_TFUNCTION) {
-        luaL_typeerrorL(L, target_index, OBF("function"));
-        return 0;
-    }
-    if (lua_type(L, hook_index) != LUA_TFUNCTION) {
-        luaL_typeerrorL(L, hook_index, OBF("function"));
-        return 0;
-    }
-
-    Closure* target = reinterpret_cast<Closure*>(const_cast<void*>(lua_topointer(L, target_index)));
-    if (!target) {
-        luaL_error(L, OBF("invalid function"));
-        return 0;
-    }
-
-    int original_index = lua_gettop(L) + 1;
-    if (push_registry_value(L, &original_map_key, target)) {
-        original_index = lua_gettop(L);
-    } else {
-        lua_pop(L, 1);
-        if (lua_iscfunction(L, target_index)) {
-            int clone_base = lua_gettop(L);
-            for (int index = 1; index <= target->nupvalues; ++index) {
-                if (!lua_getupvalue(L, target_index, index)) {
-                    lua_settop(L, clone_base);
-                    luaL_error(L, OBF("unable to clone c closure"));
-                    return 0;
-                }
-            }
-            lua_pushcclosurek(L, target->c.f, nullptr, target->nupvalues, target->c.cont);
-        } else {
-            luaC_checkGC(L);
-            luaC_threadbarrier(L);
-            Closure* clone = luaF_newLclosure(L, target->nupvalues, target->l.env, target->l.p);
-            for (int index = 0; index < target->nupvalues; ++index) {
-                setobj2n(L, &clone->l.uprefs[index], &target->l.uprefs[index]);
-            }
-            setclvalue(L, L->top, clone);
-            ++L->top;
-        }
-        original_index = lua_gettop(L);
-        store_registry_value(L, &original_map_key, target, original_index);
-    }
-
-    if (lua_iscfunction(L, target_index)) {
-        store_registry_value(L, &hook_map_key, target, hook_index);
-        target->c.f = hook_dispatch;
-        target->c.cont = forward_continuation;
-        return 1;
-    }
-
-    Closure* forwarder = make_lua_forwarder(L, target_index);
-    if (!forwarder) {
-        lua_settop(L, original_index);
-        luaL_error(L, OBF("unable to create hook forwarder"));
-        return 0;
-    }
-    target->l.p = forwarder->l.p;
-    target->nupvalues = 0;
-    target->stacksize = forwarder->stacksize;
-    luaC_objbarrier(L, target, target->l.p);
-    store_registry_value(L, &hook_map_key, target, hook_index);
-    lua_pop(L, 1);
-    return 1;
-}
 
 }
 
@@ -478,12 +315,116 @@ std::int32_t getinstances(lua_State* L) {
 }
 
 std::int32_t hookfunction(lua_State* L) {
-    int result = hookfunction_impl(L, 1, 2);
-    if (result > 0) {
-        lua_replace(L, 1);
-        lua_settop(L, 1);
+    if (lua_type(L, 1) != LUA_TFUNCTION) {
+        luaL_typeerrorL(L, 1, OBF("function"));
+        return 0;
     }
-    return result;
+    if (lua_type(L, 2) != LUA_TFUNCTION) {
+        luaL_typeerrorL(L, 2, OBF("function"));
+        return 0;
+    }
+
+    Closure* target = reinterpret_cast<Closure*>(const_cast<void*>(lua_topointer(L, 1)));
+    Closure* hook = reinterpret_cast<Closure*>(const_cast<void*>(lua_topointer(L, 2)));
+    if (!target || !hook) {
+        luaL_error(L, OBF("invalid function"));
+        return 0;
+    }
+    if (hook->nupvalues > target->nupvalues) {
+        luaL_error(L, OBF("hook has more upvalues than target"));
+        return 0;
+    }
+
+    int original_index;
+    lua_rawgetp(L, LUA_REGISTRYINDEX, &original_map_key);
+    if (lua_istable(L, -1)) {
+        int map_index = lua_gettop(L);
+        lua_rawgetptagged(L, map_index, target, 0);
+        lua_remove(L, map_index);
+        if (lua_type(L, -1) == LUA_TFUNCTION) {
+            original_index = lua_gettop(L);
+        } else {
+            lua_pop(L, 1);
+            original_index = 0;
+        }
+    } else {
+        lua_pop(L, 1);
+        original_index = 0;
+    }
+
+    if (original_index == 0) {
+        if (target->tt == 7) {
+            for (int index = 0; index < target->nupvalues; ++index) {
+                setobj2s(L, L->top, &target->c.upvals[index]);
+                ++L->top;
+            }
+            lua_pushcclosurek(L, target->c.f, nullptr, target->nupvalues, target->c.cont);
+        } else {
+            luaC_checkGC(L);
+            luaC_threadbarrier(L);
+            Closure* clone = luaF_newLclosure(L, target->nupvalues, target->l.env, target->l.p);
+            for (int index = 0; index < target->nupvalues; ++index) {
+                setobj2n(L, &clone->l.uprefs[index], &target->l.uprefs[index]);
+            }
+            setclvalue(L, L->top, clone);
+            ++L->top;
+        }
+        original_index = lua_gettop(L);
+        lua_rawgetp(L, LUA_REGISTRYINDEX, &original_map_key);
+        if (!lua_istable(L, -1)) {
+            lua_pop(L, 1);
+            lua_newtable(L);
+            lua_pushvalue(L, -1);
+            lua_rawsetp(L, LUA_REGISTRYINDEX, &original_map_key);
+        }
+        int map_index = lua_gettop(L);
+        lua_pushvalue(L, original_index);
+        lua_rawsetptagged(L, map_index, target, 0);
+        lua_remove(L, map_index);
+    }
+
+    if (target->tt == 7 && hook->tt == 7) {
+        target->c.f = hook->c.f;
+        target->c.cont = hook->c.cont;
+        target->nupvalues = hook->nupvalues;
+        target->stacksize = hook->stacksize;
+        for (int index = 0; index < hook->nupvalues; ++index) {
+            setobj2n(L, &target->c.upvals[index], &hook->c.upvals[index]);
+        }
+    } else if (target->tt == 8 && hook->tt == 8) {
+        target->l.env = hook->l.env;
+        target->l.p = hook->l.p;
+        target->nupvalues = hook->nupvalues;
+        target->stacksize = hook->stacksize;
+        for (int index = 0; index < hook->nupvalues; ++index) {
+            setobj2n(L, &target->l.uprefs[index], &hook->l.uprefs[index]);
+        }
+        luaC_objbarrier(L, target, target->l.env);
+        luaC_objbarrier(L, target, target->l.p);
+    } else if (target->tt == 7) {
+        target->tt = 8;
+        target->isC = 0;
+        target->l.env = hook->l.env;
+        target->l.p = hook->l.p;
+        target->nupvalues = hook->nupvalues;
+        target->stacksize = hook->stacksize;
+        for (int index = 0; index < hook->nupvalues; ++index) {
+            setobj2n(L, &target->l.uprefs[index], &hook->l.uprefs[index]);
+        }
+        luaC_objbarrier(L, target, target->l.env);
+        luaC_objbarrier(L, target, target->l.p);
+    } else {
+        target->tt = 7;
+        target->isC = 1;
+        target->c.f = hook->c.f;
+        target->c.cont = hook->c.cont;
+        target->nupvalues = hook->nupvalues;
+        target->stacksize = hook->stacksize;
+        for (int index = 0; index < hook->nupvalues; ++index) {
+            setobj2n(L, &target->c.upvals[index], &hook->c.upvals[index]);
+        }
+    }
+    return 1;
 }
 
 std::int32_t newcclosure(lua_State* L) {
@@ -491,9 +432,50 @@ std::int32_t newcclosure(lua_State* L) {
         luaL_typeerrorL(L, 1, OBF("function"));
         return 0;
     }
-    lua_pushcclosurek(L, newcclosure_dispatch, OBF("newcclosure"), 0, forward_continuation);
+    lua_pushcclosurek(L, [](lua_State* state) -> int {
+        lua_Debug debug{};
+        int before = lua_gettop(state);
+        if (!lua_getinfo(state, 0, OBF("f"), &debug) || lua_gettop(state) != before + 1) {
+            lua_settop(state, before);
+            luaL_error(state, OBF("newcclosure target is unavailable"));
+            return 0;
+        }
+        Closure* wrapper = reinterpret_cast<Closure*>(const_cast<void*>(lua_topointer(state, -1)));
+        lua_pop(state, 1);
+        lua_rawgetp(state, LUA_REGISTRYINDEX, &wrapper_map_key);
+        if (!lua_istable(state, -1)) {
+            lua_pop(state, 1);
+            luaL_error(state, OBF("newcclosure target is unavailable"));
+            return 0;
+        }
+        int map_index = lua_gettop(state);
+        lua_rawgetptagged(state, map_index, wrapper, 0);
+        lua_remove(state, map_index);
+        if (lua_type(state, -1) != LUA_TFUNCTION) {
+            luaL_error(state, OBF("newcclosure target is unavailable"));
+            return 0;
+        }
+        lua_insert(state, 1);
+        return luaL_callyieldable(state, lua_gettop(state) - 1, LUA_MULTRET);
+    }, OBF("newcclosure"), 0, [](lua_State* state, int status) -> int {
+        if (status != LUA_OK) {
+            lua_error(state);
+            return 0;
+        }
+        return lua_gettop(state);
+    });
     Closure* wrapper = reinterpret_cast<Closure*>(const_cast<void*>(lua_topointer(L, -1)));
-    store_registry_value(L, &wrapper_map_key, wrapper, 1);
+    lua_rawgetp(L, LUA_REGISTRYINDEX, &wrapper_map_key);
+    if (!lua_istable(L, -1)) {
+        lua_pop(L, 1);
+        lua_newtable(L);
+        lua_pushvalue(L, -1);
+        lua_rawsetp(L, LUA_REGISTRYINDEX, &wrapper_map_key);
+    }
+    int map_index = lua_gettop(L);
+    lua_pushvalue(L, 1);
+    lua_rawsetptagged(L, map_index, wrapper, 0);
+    lua_remove(L, map_index);
     return 1;
 }
 
