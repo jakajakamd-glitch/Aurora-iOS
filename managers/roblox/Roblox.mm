@@ -93,27 +93,38 @@ bool start_script_hook_installed = false;
 bool game_loaded_hook_installed = false;
 
 void job_start_hook(Job *job) {
-    NSLog(OBF_NS("[Aurora] job_start entered job=%p"), job);
+    const char *name = roblox_manager_t::get_job_name(job);
+    if (!name) {
+        if (job_start_hook_installed) {
+            reinterpret_cast<void (*)(Job*)>(aurora_job_start_trampoline)(job);
+        }
+        return;
+    }
+    utility::utility_mgr.log([[NSString stringWithFormat:OBF_NS("JobStart \\\"%s\\\" %p"), name, job] UTF8String]);
+    if (roblox_manager_t::is_whsj(job)) {
+        roblox_manager.setup_environment(job);
+    }
     if (job_start_hook_installed) {
         reinterpret_cast<void (*)(Job*)>(aurora_job_start_trampoline)(job);
     }
-    utility::utility_mgr.log(OBF("job_start hook fired"));
 }
 
 void game_loaded_hook(void* sender, void* data) {
-    NSLog(OBF_NS("[Aurora] game_loaded entered sender=%p data=%p"), sender, data);
     if (game_loaded_hook_installed) {
         reinterpret_cast<void (*)(void*, void*)>(aurora_game_loaded_trampoline)(sender, data);
     }
-    utility::utility_mgr.log(OBF("game_loaded hook fired"));
+    core::on_game_loaded(sender, data);
 }
 
 void start_script_hook(script_context *ctx, ScriptStart *script_start) {
-    NSLog(OBF_NS("[Aurora] start_script entered context=%p start=%p"), ctx, script_start);
+    void *gs = roblox_manager.selected_state;
+    if (!gs) {
+        gs = roblox_manager.get_global_state(ctx);
+    }
+    utility::utility_mgr.log([[NSString stringWithFormat:OBF_NS("startScript this=%p scriptStart=%p state=%p"), ctx, script_start, gs] UTF8String]);
     if (start_script_hook_installed) {
         reinterpret_cast<void (*)(script_context*, ScriptStart*)>(aurora_start_script_trampoline)(ctx, script_start);
     }
-    utility::utility_mgr.log(OBF("start_script hook fired"));
 }
 }
 
