@@ -75,12 +75,14 @@ bool hook_mgr_type::hook(uintptr_t target,
     if (backup) *backup = nullptr;
     if (!target || !replacement || !trampoline || !return_slot || !expected) {
         NSLog(OBF_NS("[Aurora] hook_mgr: invalid hook arguments"));
+        utility::utility_mgr.log(OBF("hook failure: invalid arguments"));
         return false;
     }
     uint32_t actual[4];
     if (!target_matches(target, expected, actual) && !already_patched(actual)) {
         NSLog(OBF_NS("[Aurora] hook_mgr: prologue mismatch target=%p words=%08x %08x %08x %08x"),
               (void*)target, actual[0], actual[1], actual[2], actual[3]);
+        utility::utility_mgr.log([[NSString stringWithFormat:OBF_NS("hook failure: prologue %p %08x %08x %08x %08x"), (void*)target, actual[0], actual[1], actual[2], actual[3]] UTF8String]);
         return false;
     }
     if (already_patched(actual)) {
@@ -91,6 +93,7 @@ bool hook_mgr_type::hook(uintptr_t target,
     uintptr_t page = page_base(target);
     if (!make_page_writable(page, size)) {
         NSLog(OBF_NS("[Aurora] hook_mgr: target page not writable target=%p"), (void*)target);
+        utility::utility_mgr.log([[NSString stringWithFormat:OBF_NS("hook failure: page protection %p"), (void*)target] UTF8String]);
         return false;
     }
 
