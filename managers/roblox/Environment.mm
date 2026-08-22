@@ -1,5 +1,6 @@
 #import "environment.hpp"
 #import "../core/core.hpp"
+#import "../core/hookmetamethod.hpp"
 #include "lua.h"
 #include "Luau/Compiler.h"
 #include <string>
@@ -82,8 +83,13 @@ void environment_manager_t::load_environment(lua_State* thread) {
     lua_setglobal(thread, OBF("getinstances"));
     lua_pushcclosurek(thread, core::hookfunction, OBF("hookfunction"), 0, nullptr);
     lua_setglobal(thread, OBF("hookfunction"));
-    lua_pushcclosurek(thread, core::hookmetamethod, OBF("hookmetamethod"), 0, nullptr);
-    lua_setglobal(thread, OBF("hookmetamethod"));
+    int hookmetamethod_base = lua_gettop(thread);
+    std::string hookmetamethod_bytecode = Luau::compile(core::hookmetamethod_script);
+    if (luau_load(thread, OBF("=hookmetamethod"), hookmetamethod_bytecode.data(), hookmetamethod_bytecode.size(), 0) == 0 && lua_pcall(thread, 0, 1, 0) == 0 && lua_type(thread, -1) == LUA_TFUNCTION) {
+        lua_setglobal(thread, OBF("hookmetamethod"));
+    } else {
+        lua_settop(thread, hookmetamethod_base);
+    }
     lua_pushcclosurek(thread, core::newcclosure, OBF("newcclosure"), 0, nullptr);
     lua_setglobal(thread, OBF("newcclosure"));
     lua_pushcclosurek(thread, core::run_on_actor, OBF("run_on_actor"), 0, nullptr);

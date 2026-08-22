@@ -150,29 +150,6 @@ static Closure* active_closure(lua_State* L) {
     return closure;
 }
 
-static void push_lua_clone(lua_State* L, Closure* original) {
-    luaC_checkGC(L);
-    luaC_threadbarrier(L);
-    Closure* clone = luaF_newLclosure(L, original->nupvalues, original->l.env, original->l.p);
-    for (int index = 0; index < original->nupvalues; ++index) {
-        setobj2n(L, &clone->l.uprefs[index], &original->l.uprefs[index]);
-    }
-    setclvalue(L, L->top, clone);
-    ++L->top;
-}
-
-static bool push_cclosure_clone(lua_State* L, int target_index, Closure* original) {
-    int base = lua_gettop(L);
-    for (int index = 1; index <= original->nupvalues; ++index) {
-        if (!lua_getupvalue(L, target_index, index)) {
-            lua_settop(L, base);
-            return false;
-        }
-    }
-    lua_pushcclosurek(L, original->c.f, nullptr, original->nupvalues, original->c.cont);
-    return true;
-}
-
 static int forward_continuation(lua_State* L, int status) {
     if (status != LUA_OK) {
         lua_error(L);
@@ -251,12 +228,24 @@ static int hookfunction_impl(lua_State* L, int target_index, int hook_index) {
     } else {
         lua_pop(L, 1);
         if (lua_iscfunction(L, target_index)) {
-            if (!push_cclosure_clone(L, target_index, target)) {
-                luaL_error(L, OBF("unable to clone c closure"));
-                return 0;
+            int clone_base = lua_gettop(L);
+            for (int index = 1; index <= target->nupvalues; ++index) {
+                if (!lua_getupvalue(L, target_index, index)) {
+                    lua_settop(L, clone_base);
+                    luaL_error(L, OBF("unable to clone c closure"));
+                    return 0;
+                }
             }
+            lua_pushcclosurek(L, target->c.f, nullptr, target->nupvalues, target->c.cont);
         } else {
-            push_lua_clone(L, target);
+            luaC_checkGC(L);
+            luaC_threadbarrier(L);
+            Closure* clone = luaF_newLclosure(L, target->nupvalues, target->l.env, target->l.p);
+            for (int index = 0; index < target->nupvalues; ++index) {
+                setobj2n(L, &clone->l.uprefs[index], &target->l.uprefs[index]);
+            }
+            setclvalue(L, L->top, clone);
+            ++L->top;
         }
         original_index = lua_gettop(L);
         store_registry_value(L, &original_map_key, target, original_index);
@@ -384,7 +373,14 @@ std::int32_t clonefunction(lua_State* L) {
     }
 
     if (!lua_iscfunction(L, 1)) {
-        push_lua_clone(L, original);
+        luaC_checkGC(L);
+        luaC_threadbarrier(L);
+        Closure* clone = luaF_newLclosure(L, original->nupvalues, original->l.env, original->l.p);
+        for (int index = 0; index < original->nupvalues; ++index) {
+            setobj2n(L, &clone->l.uprefs[index], &original->l.uprefs[index]);
+        }
+        setclvalue(L, L->top, clone);
+        ++L->top;
         return 1;
     }
     if (!original || !original->c.f) {
@@ -488,33 +484,6 @@ std::int32_t hookfunction(lua_State* L) {
         lua_settop(L, 1);
     }
     return result;
-}
-
-std::int32_t hookmetamethod(lua_State* L) {
-    if (!lua_isstring(L, 2)) {
-        luaL_typeerrorL(L, 2, OBF("string"));
-        return 0;
-    }
-    if (lua_type(L, 3) != LUA_TFUNCTION) {
-        luaL_typeerrorL(L, 3, OBF("function"));
-        return 0;
-    }
-    if (!lua_getmetatable(L, 1)) {
-        luaL_error(L, OBF("object has no metatable"));
-        return 0;
-    }
-    int metatable_index = lua_gettop(L);
-    const char* metamethod = luaL_checkstring(L, 2);
-    lua_getfield(L, metatable_index, metamethod);
-    if (lua_type(L, -1) != LUA_TFUNCTION) {
-        luaL_error(L, OBF("metamethod is not a function"));
-        return 0;
-    }
-    int target_index = lua_gettop(L);
-    hookfunction_impl(L, target_index, 3);
-    lua_replace(L, 1);
-    lua_settop(L, 1);
-    return 1;
 }
 
 std::int32_t newcclosure(lua_State* L) {

@@ -1,11 +1,19 @@
 #pragma once
 
-#include <cstdint>
-
-struct lua_State;
+#include "../../obfuscation.hpp"
 
 namespace managers::core {
 
-std::int32_t hookmetamethod(lua_State* L);
+static auto hookmetamethod_script = OBF(R"AURORA(return function(object, metamethod_name, hook)
+    local metatable = getmetatable(object)
+    if type(metatable) ~= "table" then
+        error("object has no accessible metatable", 2)
+    end
+    local target = rawget(metatable, metamethod_name)
+    if type(target) ~= "function" then
+        error("metamethod is not a function", 2)
+    end
+    return hookfunction(target, hook)
+end)AURORA");
 
 }
