@@ -78,6 +78,14 @@ void environment_manager_t::load_environment(lua_State* thread) {
     lua_setglobal(thread, OBF("loadstring"));
     lua_pushcclosurek(thread, core::clonefunction, OBF("clonefunction"), 0, nullptr);
     lua_setglobal(thread, OBF("clonefunction"));
+    lua_pushcclosurek(thread, core::getinstances, OBF("getinstances"), 0, nullptr);
+    lua_setglobal(thread, OBF("getinstances"));
+    lua_pushcclosurek(thread, core::hookfunction, OBF("hookfunction"), 0, nullptr);
+    lua_setglobal(thread, OBF("hookfunction"));
+    lua_pushcclosurek(thread, core::hookmetamethod, OBF("hookmetamethod"), 0, nullptr);
+    lua_setglobal(thread, OBF("hookmetamethod"));
+    lua_pushcclosurek(thread, core::newcclosure, OBF("newcclosure"), 0, nullptr);
+    lua_setglobal(thread, OBF("newcclosure"));
     lua_pushcclosurek(thread, core::run_on_actor, OBF("run_on_actor"), 0, nullptr);
     lua_setglobal(thread, OBF("run_on_actor"));
 }

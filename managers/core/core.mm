@@ -8,11 +8,16 @@
 #include <atomic>
 #include <cstring>
 #include <string>
+#include <unordered_set>
+#include <vector>
 #include "lua.h"
 #include "lualib.h"
 #include "lmem.h"
 #include "lobject.h"
 #include "lstate.h"
+#include "lfunc.h"
+#include "lgc.h"
+#include "startscript.hpp"
 #include "Luau/Compiler.h"
 
 namespace managers::core {
@@ -98,6 +103,185 @@ lua_State* find_script_thread(lua_State* state, void* script) {
         }
     }
     return nullptr;
+}
+
+
+static uint8_t hook_map_key;
+static uint8_t original_map_key;
+static uint8_t wrapper_map_key;
+static uint8_t instance_type_key;
+
+static void push_registry_map(lua_State* L, void* key) {
+    lua_rawgetp(L, LUA_REGISTRYINDEX, key);
+    if (lua_istable(L, -1)) {
+        return;
+    }
+    lua_pop(L, 1);
+    lua_newtable(L);
+    lua_pushvalue(L, -1);
+    lua_rawsetp(L, LUA_REGISTRYINDEX, key);
+}
+
+static bool push_registry_value(lua_State* L, void* key, const void* object) {
+    push_registry_map(L, key);
+    lua_rawgetptagged(L, -1, const_cast<void*>(object), 0);
+    lua_remove(L, -2);
+    return lua_type(L, -1) != LUA_TNIL;
+}
+
+static void store_registry_value(lua_State* L, void* key, const void* object, int value_index) {
+    int map_index = lua_gettop(L) + 1;
+    push_registry_map(L, key);
+    map_index = lua_gettop(L);
+    lua_pushvalue(L, value_index);
+    lua_rawsetptagged(L, map_index, const_cast<void*>(object), 0);
+    lua_remove(L, map_index);
+}
+
+static Closure* active_closure(lua_State* L) {
+    lua_Debug debug{};
+    int before = lua_gettop(L);
+    if (!lua_getinfo(L, 0, OBF("f"), &debug) || lua_gettop(L) != before + 1) {
+        lua_settop(L, before);
+        return nullptr;
+    }
+    Closure* closure = reinterpret_cast<Closure*>(const_cast<void*>(lua_topointer(L, -1)));
+    lua_pop(L, 1);
+    return closure;
+}
+
+static void push_lua_clone(lua_State* L, Closure* original) {
+    luaC_checkGC(L);
+    luaC_threadbarrier(L);
+    Closure* clone = luaF_newLclosure(L, original->nupvalues, original->l.env, original->l.p);
+    for (int index = 0; index < original->nupvalues; ++index) {
+        setobj2n(L, &clone->l.uprefs[index], &original->l.uprefs[index]);
+    }
+    setclvalue(L, L->top, clone);
+    ++L->top;
+}
+
+static bool push_cclosure_clone(lua_State* L, int target_index, Closure* original) {
+    int base = lua_gettop(L);
+    for (int index = 1; index <= original->nupvalues; ++index) {
+        if (!lua_getupvalue(L, target_index, index)) {
+            lua_settop(L, base);
+            return false;
+        }
+    }
+    lua_pushcclosurek(L, original->c.f, nullptr, original->nupvalues, original->c.cont);
+    return true;
+}
+
+static int forward_continuation(lua_State* L, int status) {
+    if (status != LUA_OK) {
+        lua_error(L);
+        return 0;
+    }
+    return lua_gettop(L);
+}
+
+static int hook_dispatch(lua_State* L) {
+    Closure* wrapper = active_closure(L);
+    if (!wrapper || !push_registry_value(L, &hook_map_key, wrapper)) {
+        luaL_error(L, OBF("hook target is unavailable"));
+        return 0;
+    }
+    lua_insert(L, 1);
+    return luaL_callyieldable(L, lua_gettop(L) - 1, LUA_MULTRET);
+}
+
+static int newcclosure_dispatch(lua_State* L) {
+    Closure* wrapper = active_closure(L);
+    if (!wrapper || !push_registry_value(L, &wrapper_map_key, wrapper)) {
+        luaL_error(L, OBF("newcclosure target is unavailable"));
+        return 0;
+    }
+    lua_insert(L, 1);
+    return luaL_callyieldable(L, lua_gettop(L) - 1, LUA_MULTRET);
+}
+
+static Closure* make_lua_forwarder(lua_State* L, int target_index) {
+    int base = lua_gettop(L);
+    lua_getfenv(L, target_index);
+    if (!lua_istable(L, -1)) {
+        lua_pop(L, 1);
+        lua_getglobal(L, OBF("_G"));
+    }
+    lua_pushcclosurek(L, hook_dispatch, OBF("__aurora_hook_dispatch"), 0, forward_continuation);
+    lua_setfield(L, -2, OBF("__aurora_hook_dispatch"));
+    lua_pop(L, 1);
+
+    static const char* source = OBF("return function(...) return __aurora_hook_dispatch(...) end");
+    std::string bytecode = Luau::compile(source);
+    int status = luau_load(L, OBF("=hookfunction"), bytecode.data(), bytecode.size(), 0);
+    if (status != 0 || lua_type(L, -1) != LUA_TFUNCTION) {
+        lua_settop(L, base);
+        return nullptr;
+    }
+    status = lua_pcall(L, 0, 1, 0);
+    if (status != 0 || lua_type(L, -1) != LUA_TFUNCTION) {
+        lua_settop(L, base);
+        return nullptr;
+    }
+    return reinterpret_cast<Closure*>(const_cast<void*>(lua_topointer(L, -1)));
+}
+
+static int hookfunction_impl(lua_State* L, int target_index, int hook_index) {
+    target_index = lua_absindex(L, target_index);
+    hook_index = lua_absindex(L, hook_index);
+    if (lua_type(L, target_index) != LUA_TFUNCTION) {
+        luaL_typeerrorL(L, target_index, OBF("function"));
+        return 0;
+    }
+    if (lua_type(L, hook_index) != LUA_TFUNCTION) {
+        luaL_typeerrorL(L, hook_index, OBF("function"));
+        return 0;
+    }
+
+    Closure* target = reinterpret_cast<Closure*>(const_cast<void*>(lua_topointer(L, target_index)));
+    if (!target) {
+        luaL_error(L, OBF("invalid function"));
+        return 0;
+    }
+
+    int original_index = lua_gettop(L) + 1;
+    if (push_registry_value(L, &original_map_key, target)) {
+        original_index = lua_gettop(L);
+    } else {
+        lua_pop(L, 1);
+        if (lua_iscfunction(L, target_index)) {
+            if (!push_cclosure_clone(L, target_index, target)) {
+                luaL_error(L, OBF("unable to clone c closure"));
+                return 0;
+            }
+        } else {
+            push_lua_clone(L, target);
+        }
+        original_index = lua_gettop(L);
+        store_registry_value(L, &original_map_key, target, original_index);
+    }
+
+    if (lua_iscfunction(L, target_index)) {
+        store_registry_value(L, &hook_map_key, target, hook_index);
+        target->c.f = hook_dispatch;
+        target->c.cont = forward_continuation;
+        return 1;
+    }
+
+    Closure* forwarder = make_lua_forwarder(L, target_index);
+    if (!forwarder) {
+        lua_settop(L, original_index);
+        luaL_error(L, OBF("unable to create hook forwarder"));
+        return 0;
+    }
+    target->l.p = forwarder->l.p;
+    target->nupvalues = 0;
+    target->stacksize = forwarder->stacksize;
+    luaC_objbarrier(L, target, target->l.p);
+    store_registry_value(L, &hook_map_key, target, hook_index);
+    lua_pop(L, 1);
+    return 1;
 }
 
 }
@@ -193,12 +377,16 @@ std::int32_t clonefunction(lua_State* L) {
         return 0;
     }
 
-    if (!lua_iscfunction(L, 1)) {
-        lua_clonefunction(L, 1);
-        return 1;
+    Closure* original = reinterpret_cast<Closure*>(const_cast<void*>(lua_topointer(L, 1)));
+    if (!original) {
+        luaL_error(L, OBF("invalid function"));
+        return 0;
     }
 
-    Closure* original = reinterpret_cast<Closure*>(const_cast<void*>(lua_topointer(L, 1)));
+    if (!lua_iscfunction(L, 1)) {
+        push_lua_clone(L, original);
+        return 1;
+    }
     if (!original || !original->c.f) {
         lua_pushstring(L, OBF("invalid c closure"));
         lua_error(L);
@@ -215,6 +403,128 @@ std::int32_t clonefunction(lua_State* L) {
     }
 
     lua_pushcclosurek(L, original->c.f, nullptr, upvalue_count, original->c.cont);
+    return 1;
+}
+
+
+std::int32_t getinstances(lua_State* L) {
+    lua_newtable(L);
+    int result_index = lua_gettop(L);
+    if (!L || !L->global) {
+        return 1;
+    }
+
+    std::unordered_set<void*> seen;
+    int result_count = 0;
+    auto is_instance_value = [L](int index) {
+        if (!lua_isuserdata(L, index)) {
+            return false;
+        }
+        int tag = lua_userdatatag(L, index);
+        const char* name = lua_getuserdataname(L, tag);
+        return name && std::strcmp(name, OBF("Instance")) == 0;
+    };
+    auto append_instance = [&seen, &result_count, result_index, L](int index) {
+        void* identity = const_cast<void*>(lua_topointer(L, index));
+        if (!identity || !seen.insert(identity).second) {
+            return;
+        }
+        lua_pushvalue(L, index);
+        lua_rawseti(L, result_index, ++result_count);
+    };
+
+    lua_pushnil(L);
+    while (lua_next(L, LUA_REGISTRYINDEX) != 0) {
+        if (lua_istable(L, -1)) {
+            int held_table = lua_absindex(L, -1);
+            lua_pushnil(L);
+            while (lua_next(L, held_table) != 0) {
+                if (is_instance_value(-1)) {
+                    append_instance(-1);
+                }
+                lua_pop(L, 1);
+            }
+        }
+        lua_pop(L, 1);
+    }
+
+    for (lua_Page* page = L->global->allgcopages; page; page = luaM_getnextpage(page)) {
+        char* start = nullptr;
+        char* end = nullptr;
+        int busy_blocks = 0;
+        int block_size = 0;
+        luaM_getpagewalkinfo(page, &start, &end, &busy_blocks, &block_size);
+        if (!start || !end || block_size <= 0) {
+            continue;
+        }
+        for (char* position = start; position != end; position += block_size) {
+            GCObject* object = reinterpret_cast<GCObject*>(position);
+            if (!object || object->gch.tt != LUA_TUSERDATA) {
+                continue;
+            }
+            Udata* userdata = &object->u;
+            const char* userdata_name = lua_getuserdataname(L, userdata->tag);
+            if (userdata->len < 16 || !userdata_name || std::strcmp(userdata_name, OBF("Instance")) != 0) {
+                continue;
+            }
+            void* instance = *reinterpret_cast<void**>(userdata->data);
+            void* control = *reinterpret_cast<void**>(userdata->data + sizeof(void*));
+            if (!instance || !control || !seen.insert(instance).second) {
+                continue;
+            }
+            __atomic_add_fetch(reinterpret_cast<uint64_t*>(control) + 1, 1, __ATOMIC_RELAXED);
+            void* copy = lua_newuserdatataggedwithmetatable(L, 16, userdata->tag);
+            std::memcpy(copy, userdata->data, 16);
+            lua_rawseti(L, result_index, ++result_count);
+        }
+    }
+    return 1;
+}
+
+std::int32_t hookfunction(lua_State* L) {
+    int result = hookfunction_impl(L, 1, 2);
+    if (result > 0) {
+        lua_replace(L, 1);
+        lua_settop(L, 1);
+    }
+    return result;
+}
+
+std::int32_t hookmetamethod(lua_State* L) {
+    if (!lua_isstring(L, 2)) {
+        luaL_typeerrorL(L, 2, OBF("string"));
+        return 0;
+    }
+    if (lua_type(L, 3) != LUA_TFUNCTION) {
+        luaL_typeerrorL(L, 3, OBF("function"));
+        return 0;
+    }
+    if (!lua_getmetatable(L, 1)) {
+        luaL_error(L, OBF("object has no metatable"));
+        return 0;
+    }
+    int metatable_index = lua_gettop(L);
+    const char* metamethod = luaL_checkstring(L, 2);
+    lua_getfield(L, metatable_index, metamethod);
+    if (lua_type(L, -1) != LUA_TFUNCTION) {
+        luaL_error(L, OBF("metamethod is not a function"));
+        return 0;
+    }
+    int target_index = lua_gettop(L);
+    hookfunction_impl(L, target_index, 3);
+    lua_replace(L, 1);
+    lua_settop(L, 1);
+    return 1;
+}
+
+std::int32_t newcclosure(lua_State* L) {
+    if (lua_type(L, 1) != LUA_TFUNCTION) {
+        luaL_typeerrorL(L, 1, OBF("function"));
+        return 0;
+    }
+    lua_pushcclosurek(L, newcclosure_dispatch, OBF("newcclosure"), 0, forward_continuation);
+    Closure* wrapper = reinterpret_cast<Closure*>(const_cast<void*>(lua_topointer(L, -1)));
+    store_registry_value(L, &wrapper_map_key, wrapper, 1);
     return 1;
 }
 
@@ -265,194 +575,8 @@ void on_game_loaded(void* sender, void* data) {
         return;
     }
 
-    static auto startup_script = OBF(R"AURORA(local CoreGui = game:GetService("CoreGui")
-local UIS = game:GetService("UserInputService")
-local TweenService = game:GetService("TweenService")
-
-function identifyexecutor()
-    return "Aurora", "1.0.0"
-end
-
-local function getThreadIdentity()
-    if getthreadidentity then
-        return getthreadidentity()
-    elseif getidentity then
-        return getidentity()
-    end
-    return "Unknown"
-end
-
-local MobileBlox = Instance.new("ScreenGui")
-MobileBlox.Name = "MobileBlox"
-MobileBlox.Parent = CoreGui
-MobileBlox.IgnoreGuiInset = true
-MobileBlox.DisplayOrder = 999999
-
-local UIScale = Instance.new("UIScale", MobileBlox)
-UIScale.Scale = math.clamp(workspace.CurrentCamera.ViewportSize.X / 1920, 0.6, 1.2)
-
-local function corner(obj)
-    local c = Instance.new("UICorner")
-    c.CornerRadius = UDim.new(0,8)
-    c.Parent = obj
-end
-
-local Main = Instance.new("Frame", MobileBlox)
-Main.BackgroundColor3 = Color3.fromRGB(50,50,50)
-Main.Position = UDim2.new(0.318,0,0.198,0)
-Main.Size = UDim2.new(0,492,0,282)
-corner(Main)
-
-local Title = Instance.new("TextLabel", Main)
-Title.Size = UDim2.new(1,0,0,25)
-Title.BackgroundTransparency = 1
-Title.Text = "Aurora"
-Title.TextColor3 = Color3.fromRGB(255,255,255)
-Title.TextScaled = true
-
-local TextBox = Instance.new("TextBox", Main)
-TextBox.BackgroundColor3 = Color3.fromRGB(33,33,33)
-TextBox.Position = UDim2.new(0.037,0,0.12,0)
-TextBox.Size = UDim2.new(0,450,0,180)
-TextBox.ClearTextOnFocus = false
-TextBox.MultiLine = true
-TextBox.TextWrapped = true
-TextBox.Text = ""
-TextBox.PlaceholderText = "-- enter your script here..."
-TextBox.Font = Enum.Font.Ubuntu
-TextBox.TextColor3 = Color3.fromRGB(255,255,255)
-TextBox.PlaceholderColor3 = Color3.fromRGB(150,150,150)
-TextBox.TextSize = 14
-TextBox.TextXAlignment = Enum.TextXAlignment.Left
-TextBox.TextYAlignment = Enum.TextYAlignment.Top
-corner(TextBox)
-
-local Execute = Instance.new("TextButton", Main)
-Execute.Text = "Execute"
-Execute.Size = UDim2.new(0,200,0,50)
-Execute.Position = UDim2.new(0.036,0,0.82,0)
-Execute.BackgroundColor3 = Color3.fromRGB(63,190,93)
-Execute.TextColor3 = Color3.fromRGB(255,255,255)
-Execute.TextScaled = true
-corner(Execute)
-
-local Clear = Instance.new("TextButton", Main)
-Clear.Text = "Clear"
-Clear.Size = UDim2.new(0,200,0,50)
-Clear.Position = UDim2.new(0.544,0,0.82,0)
-Clear.BackgroundColor3 = Color3.fromRGB(144,0,0)
-Clear.TextColor3 = Color3.fromRGB(255,255,255)
-Clear.TextScaled = true
-corner(Clear)
-
-local Toggle = Instance.new("TextButton", MobileBlox)
-Toggle.Size = UDim2.new(0,60,0,60)
-Toggle.Position = UDim2.new(0,20,0.5,0)
-Toggle.BackgroundColor3 = Color3.fromRGB(40,40,40)
-Toggle.Text = "AR"
-Toggle.TextColor3 = Color3.fromRGB(255,255,255)
-Toggle.TextScaled = true
-corner(Toggle)
-
-local function notify(text)
-    local Notif = Instance.new("TextLabel", MobileBlox)
-    Notif.Size = UDim2.new(0,250,0,50)
-    Notif.Position = UDim2.new(1,300,1,-60)
-    Notif.BackgroundColor3 = Color3.fromRGB(30,30,30)
-    Notif.TextColor3 = Color3.fromRGB(255,255,255)
-    Notif.TextScaled = true
-    Notif.Text = text
-    corner(Notif)
-
-    TweenService:Create(Notif, TweenInfo.new(0.25), {
-        Position = UDim2.new(1,-260,1,-60)
-    }):Play()
-
-    task.delay(3, function()
-        TweenService:Create(Notif, TweenInfo.new(0.25), {
-            Position = UDim2.new(1,300,1,-60)
-        }):Play()
-        task.wait(0.25)
-        Notif:Destroy()
-    end)
-end
-
-local function dragify(frame)
-    local dragging = false
-    local dragInput, dragStart, startPos
-
-    frame.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            dragging = true
-            dragStart = input.Position
-            startPos = frame.Position
-
-            input.Changed:Connect(function()
-                if input.UserInputState == Enum.UserInputState.End then
-                    dragging = false
-                end
-            end)
-        end
-    end)
-
-    frame.InputChanged:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
-            dragInput = input
-        end
-    end)
-
-    UIS.InputChanged:Connect(function(input)
-        if input == dragInput and dragging then
-            local delta = input.Position - dragStart
-            frame.Position = UDim2.new(
-                startPos.X.Scale,
-                startPos.X.Offset + delta.X,
-                startPos.Y.Scale,
-                startPos.Y.Offset + delta.Y
-            )
-        end
-    end)
-end
-
-dragify(Main)
-dragify(Toggle)
-
-local opened = true
-
-Toggle.MouseButton1Click:Connect(function()
-    opened = not opened
-    Main.Visible = opened
-end)
-
-Clear.MouseButton1Click:Connect(function()
-    TextBox.Text = ""
-    notify("Cleared")
-end)
-
-Execute.MouseButton1Click:Connect(function()
-    local func, err = loadstring(TextBox.Text)
-    if not func then
-        notify("Compile Error")
-        warn(err)
-        return
-    end
-
-    local success, runtimeErr = pcall(func)
-
-    if success then
-        notify("Executed")
-    else
-        notify("Runtime Error")
-        warn(runtimeErr)
-    end
-end)
-
-local name, ver = identifyexecutor()
-print(name, ver)
-print("Thread:", getThreadIdentity())
-notify("Aurora Loaded")
-)AURORA");
-    const char* source = startup_script;
+;
+    const char* source = startup_script();
     int status = roblox_manager.execute_script(source,
                                                 strlen(source),
                                                 OBF("=ongameloaded"),
