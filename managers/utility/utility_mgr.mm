@@ -30,7 +30,7 @@
     self.logs = [NSMutableArray array];
     self.expanded = NO;
 
-    self.circle = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 40, 40)];
+    self.circle = [[UIView alloc] initWithFrame:CGRectMake(20, 100, 40, 40)];
     self.circle.backgroundColor = [UIColor colorWithRed:0 green:0 blue:0 alpha:0.85];
     self.circle.layer.cornerRadius = 20;
     self.circle.layer.borderWidth = 1;
@@ -38,11 +38,13 @@
     self.circle.userInteractionEnabled = YES;
 
     self.panGesture = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(handlePan:)];
+    self.panGesture.cancelsTouchesInView = NO;
     [self.circle addGestureRecognizer:self.panGesture];
 
     self.tapGesture = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(handleTap:)];
-    [self.tapGesture setCancelsTouchesInView:NO];
+    self.tapGesture.cancelsTouchesInView = NO;
     [self.circle addGestureRecognizer:self.tapGesture];
+    [self.tapGesture requireGestureRecognizerToFail:self.panGesture];
 
     [self addSubview:self.circle];
 
@@ -54,19 +56,18 @@
     self.logView.hidden = YES;
     [self addSubview:self.logView];
 
-    self.frame = CGRectMake(20, 100, 40, 40);
+    self.frame = [UIScreen mainScreen].bounds;
     self.userInteractionEnabled = YES;
+    self.clipsToBounds = NO;
 }
 
 - (void)handlePan:(UIPanGestureRecognizer *)gesture {
-    UIView *view = gesture.view;
-    CGPoint translation = [gesture translationInView:self.superview];
-    view.center = CGPointMake(view.center.x + translation.x, view.center.y + translation.y);
-    [gesture setTranslation:CGPointZero inView:self.superview];
-
-    if (self.expanded) {
-        [self layoutExpanded];
-    }
+    CGPoint translation = [gesture translationInView:self];
+    CGPoint center = self.circle.center;
+    center.x += translation.x;
+    center.y += translation.y;
+    self.circle.center = center;
+    [gesture setTranslation:CGPointZero inView:self];
 }
 
 - (void)handleTap:(UITapGestureRecognizer *)gesture {
@@ -77,8 +78,15 @@
         [self bringSubviewToFront:self.logView];
     } else {
         self.logView.hidden = YES;
-        self.frame = CGRectMake(self.circle.frame.origin.x, self.circle.frame.origin.y, 40, 40);
+        self.frame = [UIScreen mainScreen].bounds;
     }
+}
+
+- (BOOL)pointInside:(CGPoint)point withEvent:(UIEvent *)event {
+    if (self.expanded) {
+        return CGRectContainsPoint(self.circle.frame, point) || (!self.logView.hidden && CGRectContainsPoint(self.logView.frame, point));
+    }
+    return CGRectContainsPoint(self.circle.frame, point);
 }
 
 - (void)layoutExpanded {
@@ -151,8 +159,11 @@ void utility_mgr_type::start() {
 #pragma clang diagnostic pop
         }
         if (window) {
-            [[AuroraDebugView shared] setFrame:CGRectMake(20, 100, 40, 40)];
-            [window addSubview:[AuroraDebugView shared]];
+            AuroraDebugView *debugView = [AuroraDebugView shared];
+            debugView.frame = window.bounds;
+            debugView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+            [window addSubview:debugView];
+            [window bringSubviewToFront:debugView];
         }
     });
 }
