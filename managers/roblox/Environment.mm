@@ -85,8 +85,10 @@ void environment_manager_t::load_environment(lua_State* thread) {
     lua_setglobal(thread, OBF("hookfunction"));
     int hookmetamethod_base = lua_gettop(thread);
     std::string hookmetamethod_bytecode = Luau::compile(core::hookmetamethod_script);
-    if (luau_load(thread, OBF("=hookmetamethod"), hookmetamethod_bytecode.data(), hookmetamethod_bytecode.size(), 0) == 0 && lua_pcall(thread, 0, 1, 0) == 0 && lua_type(thread, -1) == LUA_TFUNCTION) {
-        lua_setglobal(thread, OBF("hookmetamethod"));
+    if (luau_load(thread, OBF("=hookmetamethod"), hookmetamethod_bytecode.data(), hookmetamethod_bytecode.size(), 0) == 0) {
+        if (lua_pcall(thread, 0, 0, 0) != 0) {
+            lua_settop(thread, hookmetamethod_base);
+        }
     } else {
         lua_settop(thread, hookmetamethod_base);
     }
