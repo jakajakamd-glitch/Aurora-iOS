@@ -23,7 +23,7 @@ extern "C" {
 extern uintptr_t aurora_job_start_return;
 extern uintptr_t aurora_start_script_return;
 extern uintptr_t aurora_game_loaded_return;
-void aurora_job_start_trampoline(void*);
+void aurora_job_start_trampoline(void*, void*);
 void aurora_start_script_trampoline(void*, void*);
 void aurora_game_loaded_trampoline(void*, void*);
 }

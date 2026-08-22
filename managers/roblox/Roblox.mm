@@ -92,21 +92,18 @@ bool job_start_hook_installed = false;
 bool start_script_hook_installed = false;
 bool game_loaded_hook_installed = false;
 
-void job_start_hook(Job *job) {
+int job_start_hook(Job *job, void* stats) {
     const char *name = roblox_manager_t::get_job_name(job);
-    if (!name) {
-        if (job_start_hook_installed) {
-            reinterpret_cast<void (*)(Job*)>(aurora_job_start_trampoline)(job);
+    if (name) {
+        utility::utility_mgr.log([[NSString stringWithFormat:OBF_NS("JobStart \\\"%s\\\" %p"), name, job] UTF8String]);
+        if (roblox_manager_t::is_whsj(job)) {
+            roblox_manager.setup_environment(job);
         }
-        return;
-    }
-    utility::utility_mgr.log([[NSString stringWithFormat:OBF_NS("JobStart \\\"%s\\\" %p"), name, job] UTF8String]);
-    if (roblox_manager_t::is_whsj(job)) {
-        roblox_manager.setup_environment(job);
     }
     if (job_start_hook_installed) {
-        reinterpret_cast<void (*)(Job*)>(aurora_job_start_trampoline)(job);
+        return reinterpret_cast<int (*)(Job*, void*)>(aurora_job_start_trampoline)(job, stats);
     }
+    return 0;
 }
 
 void game_loaded_hook(void* sender, void* data) {
