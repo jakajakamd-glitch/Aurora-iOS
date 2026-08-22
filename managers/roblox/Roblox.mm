@@ -155,6 +155,7 @@ void roblox_manager_t::install_hooks() {
     static const uint32_t game_loaded_prologue[4] = {
         0xff4301d1u, 0xf65702a9u, 0xf44f03a9u, 0xfd7b04a9u
     };
+    utility::utility_mgr.log([[NSString stringWithFormat:OBF_NS("hook targets job=%p start=%p loaded=%p"), jobstart, startscript, game_loaded] UTF8String]);
     if (jobstart) {
         job_start_hook_installed = hook_mgr.hook(reinterpret_cast<uintptr_t>(jobstart),
                                                  (void*)job_start_hook,
@@ -179,7 +180,7 @@ void roblox_manager_t::install_hooks() {
                                                    &aurora_game_loaded_return,
                                                    game_loaded_prologue);
     }
-    utility::utility_mgr.log([[NSString stringWithFormat:OBF_NS("hooks installed jobStart=%p startScript=%p gameLoaded=%p"), jobstart, startscript, game_loaded] UTF8String]);
+    utility::utility_mgr.log([[NSString stringWithFormat:OBF_NS("hooks result job=%d start=%d loaded=%d"), job_start_hook_installed, start_script_hook_installed, game_loaded_hook_installed] UTF8String]);
 }
 
 const char* roblox_manager_t::get_job_name(Job* job) {
