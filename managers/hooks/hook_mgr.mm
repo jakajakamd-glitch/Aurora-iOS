@@ -23,10 +23,13 @@ inline uintptr_t page_size() {
     return (uintptr_t)sysconf(_SC_PAGESIZE);
 }
 
-bool target_matches(uintptr_t target, const uint32_t expected[4]) {
-    uint32_t actual[4];
-    memcpy(actual, (const void*)target, sizeof(actual));
-    return memcmp(actual, expected, sizeof(actual)) == 0;
+bool target_matches(uintptr_t target, const uint32_t expected[4], uint32_t actual[4]) {
+    memcpy(actual, (const void*)target, sizeof(uint32_t) * 4);
+    return memcmp(actual, expected, sizeof(uint32_t) * 4) == 0;
+}
+
+bool already_patched(const uint32_t actual[4]) {
+    return actual[0] == 0x58000050u && actual[1] == 0xd61f0200u;
 }
 
 bool make_page_writable(uintptr_t page, uintptr_t size) {
@@ -74,9 +77,14 @@ bool hook_mgr_type::hook(uintptr_t target,
         NSLog(OBF_NS("[Aurora] hook_mgr: invalid hook arguments"));
         return false;
     }
-    if (!target_matches(target, expected)) {
-        NSLog(OBF_NS("[Aurora] hook_mgr: prologue mismatch target=%p"), (void*)target);
+    uint32_t actual[4];
+    if (!target_matches(target, expected, actual) && !already_patched(actual)) {
+        NSLog(OBF_NS("[Aurora] hook_mgr: prologue mismatch target=%p words=%08x %08x %08x %08x"),
+              (void*)target, actual[0], actual[1], actual[2], actual[3]);
         return false;
+    }
+    if (already_patched(actual)) {
+        NSLog(OBF_NS("[Aurora] hook_mgr: replacing existing patch target=%p"), (void*)target);
     }
 
     uintptr_t size = page_size();
