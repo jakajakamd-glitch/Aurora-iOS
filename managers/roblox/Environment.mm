@@ -76,6 +76,8 @@ void environment_manager_t::load_environment(lua_State* thread) {
     lua_setglobal(thread, OBF("getgenv"));
     lua_pushcclosurek(thread, core::loadstring, OBF("loadstring"), 0, nullptr);
     lua_setglobal(thread, OBF("loadstring"));
+    lua_pushcclosurek(thread, core::clonefunction, OBF("clonefunction"), 0, nullptr);
+    lua_setglobal(thread, OBF("clonefunction"));
     lua_pushcclosurek(thread, core::run_on_actor, OBF("run_on_actor"), 0, nullptr);
     lua_setglobal(thread, OBF("run_on_actor"));
 }

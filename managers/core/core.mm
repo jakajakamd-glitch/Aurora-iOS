@@ -187,6 +187,37 @@ std::int32_t loadstring(lua_State* L) {
     return function_mgr.load_string((void*)L);
 }
 
+std::int32_t clonefunction(lua_State* L) {
+    if (lua_type(L, 1) != LUA_TFUNCTION) {
+        luaL_typeerrorL(L, 1, OBF("function"));
+        return 0;
+    }
+
+    if (!lua_iscfunction(L, 1)) {
+        lua_clonefunction(L, 1);
+        return 1;
+    }
+
+    Closure* original = reinterpret_cast<Closure*>(const_cast<void*>(lua_topointer(L, 1)));
+    if (!original || !original->c.f) {
+        lua_pushstring(L, OBF("invalid c closure"));
+        lua_error(L);
+        return 0;
+    }
+
+    int upvalue_count = original->nupvalues;
+    for (int index = 1; index <= upvalue_count; ++index) {
+        if (!lua_getupvalue(L, 1, index)) {
+            lua_pushstring(L, OBF("unable to clone c closure upvalues"));
+            lua_error(L);
+            return 0;
+        }
+    }
+
+    lua_pushcclosurek(L, original->c.f, nullptr, upvalue_count, original->c.cont);
+    return 1;
+}
+
 std::int32_t run_on_actor(lua_State* L) {
     size_t source_size = 0;
     const char* source = luaL_checklstring(L, 2, &source_size);
