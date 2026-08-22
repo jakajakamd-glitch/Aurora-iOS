@@ -19,6 +19,8 @@ public:
     static constexpr uintptr_t luaResume_offset    = 0x04370cf0;
     static constexpr uintptr_t luauExecute_offset  = 0x4389148;
     static constexpr uintptr_t getCapabilityTable_offset = 0x01766d5c;
+    static constexpr uintptr_t setProtoCaps_offset = 0x0176361c;
+    static constexpr uintptr_t loadString_offset = 0x0174c5f0;
     static constexpr uintptr_t gameLoaded_offset = 0x0494004;
 
     void* get_global_state(void* scriptctx);
@@ -27,6 +29,8 @@ public:
     int   lua_resume(void* L, void* from, int nargs);
     void  luau_execute(void* L);
     void* get_capability_table(void* scriptctx, uint64_t caps);
+    void  set_proto_caps(void* L, int stack_index, void* capability_table);
+    int   load_string(void* L);
 
 private:
     uintptr_t base_ = 0;
