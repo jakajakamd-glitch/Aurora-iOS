@@ -10,6 +10,8 @@
 #import <unistd.h>
 #import <string.h>
 #import <errno.h>
+#include <vector>
+#include <mutex>
 
 #ifndef VM_PROT_COPY
 #define VM_PROT_COPY ((vm_prot_t)0x40)
@@ -20,6 +22,9 @@ namespace managers {
 hook_mgr_type hook_mgr;
 
 namespace {
+
+std::mutex g_hook_mutex;
+std::vector<uintptr_t> g_trampoline_slots;
 
 inline uintptr_t page_base(uintptr_t addr) {
     uintptr_t ps = (uintptr_t)sysconf(_SC_PAGESIZE);
@@ -143,13 +148,20 @@ static void* find_trampoline_slot(uintptr_t scan_lo, uintptr_t scan_hi,
                                   uintptr_t avoid_lo, uintptr_t avoid_hi,
                                   size_t slots_needed) {
     uint32_t* begin = (uint32_t*)scan_lo;
-    uint32_t* end   = (uint32_t*)scan_hi;
+    uint32_t* end = (uint32_t*)scan_hi;
     size_t run = 0;
     uint32_t* run_start = nullptr;
-
     for (uint32_t* p = begin; p < end; ++p) {
         uintptr_t addr = (uintptr_t)p;
-        if (addr >= avoid_lo && addr < avoid_hi) {
+        bool reserved = false;
+        for (uintptr_t slot : g_trampoline_slots) {
+            if (addr < slot + slots_needed * sizeof(uint32_t) &&
+                addr + slots_needed * sizeof(uint32_t) > slot) {
+                reserved = true;
+                break;
+            }
+        }
+        if (reserved || (addr >= avoid_lo && addr < avoid_hi)) {
             run = 0;
             run_start = nullptr;
             continue;
@@ -167,28 +179,38 @@ static void* find_trampoline_slot(uintptr_t scan_lo, uintptr_t scan_hi,
     return nullptr;
 }
 
-static void suspend_other_threads(thread_act_t current) {
-    thread_act_array_t threads;
-    mach_msg_type_number_t count;
-    if (task_threads(mach_task_self(), &threads, &count) != KERN_SUCCESS) return;
+struct suspended_thread_set {
+    std::vector<thread_act_t> ports;
+};
+
+static suspended_thread_set suspend_other_threads(thread_act_t current) {
+    suspended_thread_set result;
+    thread_act_array_t threads = nullptr;
+    mach_msg_type_number_t count = 0;
+    if (task_threads(mach_task_self(), &threads, &count) != KERN_SUCCESS) return result;
+    result.ports.reserve(count);
     for (mach_msg_type_number_t i = 0; i < count; ++i) {
-        if (threads[i] != current) {
-            thread_suspend(threads[i]);
+        if (threads[i] == current) {
+            mach_port_deallocate(mach_task_self(), threads[i]);
+            continue;
         }
-        mach_port_deallocate(mach_task_self(), threads[i]);
+        if (thread_suspend(threads[i]) == KERN_SUCCESS) {
+            result.ports.push_back(threads[i]);
+        } else {
+            mach_port_deallocate(mach_task_self(), threads[i]);
+        }
     }
+    vm_deallocate(mach_task_self(), (vm_address_t)threads,
+                  (vm_size_t)(count * sizeof(thread_act_t)));
+    return result;
 }
 
-static void resume_other_threads(thread_act_t current) {
-    thread_act_array_t threads;
-    mach_msg_type_number_t count;
-    if (task_threads(mach_task_self(), &threads, &count) != KERN_SUCCESS) return;
-    for (mach_msg_type_number_t i = 0; i < count; ++i) {
-        if (threads[i] != current) {
-            thread_resume(threads[i]);
-        }
-        mach_port_deallocate(mach_task_self(), threads[i]);
+static void resume_other_threads(suspended_thread_set& set) {
+    for (thread_act_t port : set.ports) {
+        thread_resume(port);
+        mach_port_deallocate(mach_task_self(), port);
     }
+    set.ports.clear();
 }
 
 static void invalidate_icache(void* addr, size_t len) {
@@ -203,6 +225,7 @@ void hook_mgr_type::start() {
 }
 
 void hook_mgr_type::hook(uintptr_t absolute_address, void *replacement, void **backup) {
+    std::lock_guard<std::mutex> lock(g_hook_mutex);
     if (backup) *backup = nullptr;
     if (absolute_address == 0 || replacement == nullptr) {
         NSLog(OBF_NS("[Aurora] hook_mgr: refusing null input addr=%p repl=%p"),
@@ -214,7 +237,6 @@ void hook_mgr_type::hook(uintptr_t absolute_address, void *replacement, void **b
     uintptr_t fake   = (uintptr_t)replacement;
     uintptr_t ps     = page_size();
     uintptr_t pg_lo  = page_base(target);
-    uintptr_t pg_hi  = pg_lo + ps;
 
     static const size_t kOverwrittenSlots = 4;
     static const size_t kPatchBytes       = kOverwrittenSlots * 4;
@@ -224,36 +246,55 @@ void hook_mgr_type::hook(uintptr_t absolute_address, void *replacement, void **b
     uint32_t original_insns[kOverwrittenSlots];
     memcpy(original_insns, (void*)target, kPatchBytes);
 
-    kern_return_t kr;
-
-    kr = vm_protect(mach_task_self(),
-                    (vm_address_t)pg_lo,
-                    (vm_size_t)ps,
-                    FALSE,
-                    VM_PROT_READ | VM_PROT_WRITE | VM_PROT_COPY);
-    if (kr != KERN_SUCCESS) {
-        kr = vm_protect(mach_task_self(),
-                        (vm_address_t)pg_lo,
-                        (vm_size_t)ps,
-                        FALSE,
-                        VM_PROT_READ | VM_PROT_WRITE);
-    }
-    if (kr != KERN_SUCCESS) {
-        NSLog(OBF_NS("[Aurora] hook_mgr: vm_protect RW failed kr=%d target=%p"), kr, (void*)target);
-        return;
-    }
-
-    void* tramp_slot = find_trampoline_slot(pg_lo, pg_hi,
-                                            target, target + kPatchBytes,
-                                            kTrampSlots);
+    uintptr_t pg_hi = pg_lo + ps;
+    void* tramp_slot = find_trampoline_slot(pg_lo, pg_hi, target, target + kPatchBytes,
+                                             kTrampSlots);
     if (!tramp_slot) {
-        NSLog(OBF_NS("[Aurora] hook_mgr: no trampoline space in page target=%p"), (void*)target);
-        vm_protect(mach_task_self(), (vm_address_t)pg_lo, (vm_size_t)ps,
-                   FALSE, VM_PROT_READ | VM_PROT_EXECUTE);
+        NSLog(OBF_NS("[Aurora] hook_mgr: no executable trampoline slot target=%p"), (void*)target);
         return;
     }
 
     uintptr_t tramp_addr = (uintptr_t)tramp_slot;
+    g_trampoline_slots.push_back(tramp_addr);
+    uintptr_t tramp_pg = page_base(tramp_addr);
+    thread_act_t self_thread = mach_thread_self();
+    suspended_thread_set suspended = suspend_other_threads(self_thread);
+    kern_return_t kr = vm_protect(mach_task_self(),
+                                  (vm_address_t)pg_lo,
+                                  (vm_size_t)ps,
+                                  FALSE,
+                                  VM_PROT_READ | VM_PROT_WRITE | VM_PROT_COPY);
+    if (kr != KERN_SUCCESS) {
+        kr = vm_protect(mach_task_self(), (vm_address_t)pg_lo, (vm_size_t)ps,
+                        FALSE, VM_PROT_READ | VM_PROT_WRITE);
+    }
+    if (kr != KERN_SUCCESS) {
+        NSLog(OBF_NS("[Aurora] hook_mgr: target page not writable kr=%d target=%p"), kr, (void*)target);
+        resume_other_threads(suspended);
+        mach_port_deallocate(mach_task_self(), self_thread);
+        return;
+    }
+
+    bool tramp_page_changed = tramp_pg != pg_lo;
+    if (tramp_page_changed) {
+        kr = vm_protect(mach_task_self(),
+                        (vm_address_t)tramp_pg,
+                        (vm_size_t)ps,
+                        FALSE,
+                        VM_PROT_READ | VM_PROT_WRITE | VM_PROT_COPY);
+        if (kr != KERN_SUCCESS) {
+            kr = vm_protect(mach_task_self(), (vm_address_t)tramp_pg, (vm_size_t)ps,
+                            FALSE, VM_PROT_READ | VM_PROT_WRITE);
+        }
+        if (kr != KERN_SUCCESS) {
+            vm_protect(mach_task_self(), (vm_address_t)pg_lo, (vm_size_t)ps,
+                       FALSE, VM_PROT_READ | VM_PROT_EXECUTE);
+            NSLog(OBF_NS("[Aurora] hook_mgr: trampoline page not writable kr=%d tramp=%p"), kr, tramp_slot);
+            resume_other_threads(suspended);
+            mach_port_deallocate(mach_task_self(), self_thread);
+            return;
+        }
+    }
 
     uint32_t relocated[kOverwrittenSlots];
     size_t written = relocate_arm64(relocated, original_insns, kOverwrittenSlots,
@@ -262,6 +303,12 @@ void hook_mgr_type::hook(uintptr_t absolute_address, void *replacement, void **b
         NSLog(OBF_NS("[Aurora] hook_mgr: relocate failed target=%p"), (void*)target);
         vm_protect(mach_task_self(), (vm_address_t)pg_lo, (vm_size_t)ps,
                    FALSE, VM_PROT_READ | VM_PROT_EXECUTE);
+        if (tramp_page_changed) {
+            vm_protect(mach_task_self(), (vm_address_t)tramp_pg, (vm_size_t)ps,
+                       FALSE, VM_PROT_READ | VM_PROT_EXECUTE);
+        }
+        resume_other_threads(suspended);
+        mach_port_deallocate(mach_task_self(), self_thread);
         return;
     }
 
@@ -271,12 +318,15 @@ void hook_mgr_type::hook(uintptr_t absolute_address, void *replacement, void **b
               (void*)target, (void*)tramp_addr);
         vm_protect(mach_task_self(), (vm_address_t)pg_lo, (vm_size_t)ps,
                    FALSE, VM_PROT_READ | VM_PROT_EXECUTE);
+        if (tramp_page_changed) {
+            vm_protect(mach_task_self(), (vm_address_t)tramp_pg, (vm_size_t)ps,
+                       FALSE, VM_PROT_READ | VM_PROT_EXECUTE);
+        }
+        resume_other_threads(suspended);
+        mach_port_deallocate(mach_task_self(), self_thread);
         return;
     }
     uint32_t b_back = 0x14000000u | (uint32_t)((b_back_off >> 2) & 0x03FFFFFFu);
-
-    thread_act_t self_thread = mach_thread_self();
-    suspend_other_threads(self_thread);
 
     memcpy(tramp_slot, relocated, kPatchBytes);
     *(uint32_t*)((uintptr_t)tramp_slot + kPatchBytes) = b_back;
@@ -291,18 +341,28 @@ void hook_mgr_type::hook(uintptr_t absolute_address, void *replacement, void **b
     invalidate_icache((void*)target, kPatchBytes);
     invalidate_icache(tramp_slot, kTrampBytes);
 
-    resume_other_threads(self_thread);
-    mach_port_deallocate(mach_task_self(), self_thread);
-
     kr = vm_protect(mach_task_self(),
                     (vm_address_t)pg_lo,
                     (vm_size_t)ps,
                     FALSE,
                     VM_PROT_READ | VM_PROT_EXECUTE);
+    if (tramp_page_changed) {
+        kern_return_t tramp_restore = vm_protect(mach_task_self(),
+                                                  (vm_address_t)tramp_pg,
+                                                  (vm_size_t)ps,
+                                                  FALSE,
+                                                  VM_PROT_READ | VM_PROT_EXECUTE);
+        if (kr == KERN_SUCCESS) kr = tramp_restore;
+    }
     if (kr != KERN_SUCCESS) {
         NSLog(OBF_NS("[Aurora] hook_mgr: RX restore failed kr=%d — page left RW"), kr);
+        resume_other_threads(suspended);
+        mach_port_deallocate(mach_task_self(), self_thread);
         return;
     }
+
+    resume_other_threads(suspended);
+    mach_port_deallocate(mach_task_self(), self_thread);
 
     if (backup) {
         *backup = tramp_slot;
